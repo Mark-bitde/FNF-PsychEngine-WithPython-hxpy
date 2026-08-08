@@ -143,7 +143,6 @@ class HScript extends Iris
 	override function preset() {
 		super.preset();
 
-		// Стандартные классы Psych Engine
 		set('Type', Type);
 		#if sys
 		set('File', File);
@@ -181,7 +180,6 @@ class HScript extends Iris
 		set('FlxAnimate', FlxAnimate);
 		#end
 
-		// Функционал переменных
 		set('setVar', function(name:String, value:Dynamic) {
 			MusicBeatState.getVariables().set(name, value);
 			return value;
@@ -213,7 +211,6 @@ class HScript extends Iris
 			return PyUtils.getModSetting(saveTag, modName);
 		});
 
-		// Ввод: Клавиатура и Геймпады
 		set('keyboardJustPressed', function(name:String) return Reflect.getProperty(FlxG.keys.justPressed, name));
 		set('keyboardPressed', function(name:String) return Reflect.getProperty(FlxG.keys.pressed, name));
 		set('keyboardReleased', function(name:String) return Reflect.getProperty(FlxG.keys.justReleased, name));
@@ -436,7 +433,7 @@ class CustomInterp extends crowplexus.hscript.Interp{
         error(EUnknownVariable(id));
         return null;
     }
-}// Класс для экспорта цветов в скрипты
+}
 class CustomFlxColor {
     public static var TRANSPARENT(default, null):Int = FlxColor.TRANSPARENT;
 	public static var BLACK(default, null):Int = FlxColor.BLACK;

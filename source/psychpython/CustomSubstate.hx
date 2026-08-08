@@ -9,15 +9,11 @@ import backend.MusicBeatSubstate;
 class CustomSubstate extends MusicBeatSubstate
 {
 	public static var name:String = 'unnamed';
-	public static var instance:CustomSubstate; // [ФИКС ОШИБКИ]: Исправлен тип с CustomSub на CustomSubstate
+	public static var instance:CustomSubstate;
 
-	/**
-	 * Инициализация методов субстейта для Python-интерпретатора.
-	 * Аналог оригинального метода implement() для Lua.
-	 */
+	
 	public static function implement(script:FunkinPython)
 	{
-		// Регистрируем методы управления окнами напрямую в Hython
 		script.set("openCustomSubstate", openCustomSubstate);
 		script.set("closeCustomSubstate", closeCustomSubstate);
 		script.set("insertToCustomSubstate", insertToCustomSubstate);
@@ -44,7 +40,6 @@ class CustomSubstate extends MusicBeatSubstate
 		instance = new CustomSubstate(name);
 		PlayState.instance.openSubState(instance);
 		
-		// Триггерим событие открытия субстейта во всех Python-скриптах
 		PlayState.instance.callOnPythons("onCustomSubstateCreate", [name]);
 	}
 
@@ -54,7 +49,6 @@ class CustomSubstate extends MusicBeatSubstate
 		{
 			PlayState.instance.closeSubState();
 			return true;
-			// Триггерим событие закрытия субстейта во всех Python-скриптах
 			PlayState.instance.callOnPythons("onCustomSubstateDestroy", [name]);
 		}
 		return false;
@@ -76,7 +70,6 @@ class CustomSubstate extends MusicBeatSubstate
 		return false;
 	}
 
-	// Перегружаем стандартные методы Flixel, чтобы прокидывать события внутрь Python
 	override function create()
 	{
 		instance = this;

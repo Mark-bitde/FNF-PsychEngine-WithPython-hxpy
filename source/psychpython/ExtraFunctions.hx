@@ -21,9 +21,7 @@ class ExtraFunctions
 	{
 		var interp = script;
 
-		// ==============================================================================
-		// ⌨️ КЛАВИАТУРА И ГЕЙМПАДЫ (Keyboard & Gamepads)
-		// ==============================================================================
+		
 		interp.set("keyboardJustPressed", function(name:String) return Reflect.getProperty(FlxG.keys.justPressed, name));
 		interp.set("keyboardPressed", function(name:String) return Reflect.getProperty(FlxG.keys.pressed, name));
 		interp.set("keyboardReleased", function(name:String) return Reflect.getProperty(FlxG.keys.justReleased, name));
@@ -58,7 +56,6 @@ class ExtraFunctions
 			return Reflect.getProperty(controller.justReleased, name) == true;
 		});
 
-		// Нативные контроли Psych Engine (Стрелки / Кнопки управления)
 		interp.set("keyJustPressed", function(name:String = '') {
 			name = StringTools.trim(name.toLowerCase());
 			switch(name) {
@@ -90,9 +87,7 @@ class ExtraFunctions
 			}
 		});
 
-		// ==============================================================================
-		// 💾 СИСТЕМА СОХРАНЕНИЙ (Save Data Management)
-		// ==============================================================================
+		
 		interp.set("initSaveData", function(name:String, ?folder:String = 'psychenginemods') {
 			var variables = MusicBeatState.getVariables();
 			if(!variables.exists('save_$name')) {
@@ -137,9 +132,7 @@ class ExtraFunctions
 			}
 		});
 
-		// ==============================================================================
-		// 📁 РАБОТА С ФАЙЛАМИ И ДИРЕКТОРИЯМИ (File Management)
-		// ==============================================================================
+		
 		interp.set("checkFileExists", function(filename:String, ?absolute:Bool = false) {
 			#if MODS_ALLOWED
 			if(absolute) return FileSystem.exists(filename);

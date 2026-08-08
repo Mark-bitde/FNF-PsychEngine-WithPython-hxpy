@@ -9,19 +9,14 @@ using StringTools;
 
 class FlxAnimateFunctions
 {
-	/**
-	 * Инициализация методов работы с Adobe Animate атласами для Python-интерпретатора.
-	 * Теперь использует оригинальный MusicBeatState.getVariables().
-	 */
+	
 	public static function implement(script:FunkinPython)
 	{
 		var interp = script;
 
-		// 1. Создание FlxAnimate-спрайта (makeFlxAnimateSprite)
 		interp.set("makeFlxAnimateSprite", function(tag:String, ?x:Float = 0, ?y:Float = 0, ?loadFolder:String = null) {
 			tag = tag.replace('.', '');
 			
-			// Берём старый спрайт напрямую из MusicBeatState
 			var lastSprite = MusicBeatState.getVariables().get(tag);
 			if(lastSprite != null)
 			{
@@ -33,18 +28,15 @@ class FlxAnimateFunctions
 			var mySprite:ModchartAnimateSprite = new ModchartAnimateSprite(x, y);
 			if(loadFolder != null) Paths.loadAnimateAtlas(mySprite, loadFolder);
 			
-			// Сохраняем в общие переменные MusicBeatState
 			MusicBeatState.getVariables().set(tag, mySprite);
 			mySprite.active = true;
 		});
 
-		// 2. Динамическая загрузка атласа в существующий спрайт (loadAnimateAtlas)
 		interp.set("loadAnimateAtlas", function(tag:String, folderOrImg:String, ?spriteJson:String = null, ?animationJson:String = null) {
 			var spr:FlxAnimate = cast MusicBeatState.getVariables().get(tag);
 			if(spr != null) Paths.loadAnimateAtlas(spr, folderOrImg, spriteJson, animationJson);
 		});
 		
-		// 3. Добавление анимации по символу Flash (addAnimationBySymbol)
 		interp.set("addAnimationBySymbol", function(tag:String, name:String, symbol:String, ?framerate:Float = 24, ?loop:Bool = false, ?matX:Float = 0, ?matY:Float = 0) {
 			var obj:FlxAnimate = cast MusicBeatState.getVariables().get(tag);
 			if(obj == null) return false;
@@ -59,14 +51,12 @@ class FlxAnimateFunctions
 			return true;
 		});
 
-		// 4. Добавление анимации со списком кадров (addAnimationBySymbolIndices)
 		interp.set("addAnimationBySymbolIndices", function(tag:String, name:String, symbol:String, ?indices:Dynamic = null, ?framerate:Float = 24, ?loop:Bool = false, ?matX:Float = 0, ?matY:Float = 0) {
 			var obj:FlxAnimate = cast MusicBeatState.getVariables().get(tag);
 			if(obj == null) return false;
 
 			var myIndices:Array<Int> = [];
 
-			// ПАРСЕР ИНДЕКСОВ: Надежное приведение типов Python -> Haxe
 			if(indices == null)
 			{
 				myIndices =[0];

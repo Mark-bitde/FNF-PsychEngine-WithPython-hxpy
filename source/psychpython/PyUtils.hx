@@ -22,7 +22,6 @@ import backend.Paths;
 
 using StringTools;
 
-// Структура параметров Tween анимаций для Python
 typedef PyTweenOptions = {
 	type:FlxTweenType,
 	startDelay:Float,
@@ -35,14 +34,12 @@ typedef PyTweenOptions = {
 
 class PyUtils
 {
-	// Константы управления выполнением скриптов
 	public static final Function_Stop:String = "##PSYCHPYTHON_FUNCTIONSTOP";
 	public static final Function_Continue:String = "##PSYCHPYTHON_FUNCTIONCONTINUE";
 	public static final Function_StopPython:String = "##PSYCHPYTHON_FUNCTIONSTOPPYTHON";
 	public static final Function_StopHScript:String = "##PSYCHPYTHON_FUNCTIONSTOPHSCRIPT";
 	public static final Function_StopAll:String = "##PSYCHPYTHON_FUNCTIONSTOPALL";
 
-	// Ссылка на последний запущенный или вызвавший метод скрипт для дебага
 	public static var lastCalledScript:FunkinPython = null;
 	public static function getPyTween(options:Dynamic)
 	{
@@ -66,43 +63,31 @@ class PyUtils
 		if (camera == null || !Std.isOfType(camera, FlxCamera)) camera = PlayState.instance.camGame;
 		return camera;
 	}
-	// --- Логирование и утилиты ---
-
-	/**
-	 * Безопасно выводит текст в дебаг-консоль на экране игры.
-	 */
+	
 	public static function pythonTrace(text:String, ?color:FlxColor = FlxColor.WHITE):Void {
 		var game = PlayState.instance;
 		if (game != null) game.addTextToDebug(text, color);
 		else trace(text);
 	}
 
-	/**
-	 * Проверяет, является ли переданный объект картой (Map).
-	 */
+	
 	public static function isMap(variable:Dynamic):Bool {
 		return (variable != null && Reflect.hasField(variable, "exists") && Reflect.hasField(variable, "keyValueIterator"));
 	}
 
-	/**
-	 * Проверяет, поддерживается ли тип данных интерпретатором Hython.
-	 */
+	
 	public static function isPythonSupported(value:Any):Bool {
 		return (value == null || isOfTypes(value, [Bool, Int, Float, String, Array]) || Type.typeof(value) == ValueType.TObject);
 	}
 	
-	/**
-	 * Получает ссылку на текущее активное состояние игры (PlayState или GameOverSubstate).
-	 */
+	
 	public static function getTargetInstance()
 	{
 		if(PlayState.instance != null) return PlayState.instance.isDead ? GameOverSubstate.instance : PlayState.instance;
 		return MusicBeatState.getState();
 	}
 
-	/**
-	 * Находит группу персонажей с самым низким приоритетом отрисовки на сцене.
-	 */
+	
 	public static inline function getLowestCharacterGroup():FlxSpriteGroup
 	{
 		var stageData:StageFile = StageData.getStageFile(PlayState.SONG.stage);
@@ -126,11 +111,9 @@ class PyUtils
 		return group;
 	}
 
-	// --- Работа со свойствами и рефлексией (Reflect) ---
 
-	/**
-	 * Динамически устанавливает значение переменной внутри объекта, массива или карты (Map).
-	 */
+
+	
 	public static function setVarInArray(instance:Dynamic, variable:String, value:Dynamic, allowMaps:Bool = false):Any
 	{
 		var splitProps:Array<String> = variable.split('[');
@@ -148,9 +131,9 @@ class PyUtils
 			for (i in 1...splitProps.length)
 			{
 				var j:Dynamic = splitProps[i].substr(0, splitProps[i].length - 1);
-				if(i >= splitProps.length-1) // Последний индекс массива
+				if(i >= splitProps.length-1)
 					target[j] = value;
-				else // Промежуточные объекты
+				else 
 					target = target[j];
 			}
 			return target;
@@ -171,9 +154,7 @@ class PyUtils
 		return value;
 	}
 
-	/**
-	 * Динамически читает значение переменной из объекта, массива или карты (Map).
-	 */
+	
 	public static function getVarInArray(instance:Dynamic, variable:String, allowMaps:Bool = false):Any
 	{
 		var splitProps:Array<String> = variable.split('[');
@@ -211,9 +192,7 @@ class PyUtils
 		return Reflect.getProperty(instance, variable);
 	}
 
-	/**
-	 * Возвращает объект по его строковому имени на сцене.
-	 */
+
 	public static function getObjectDirectly(objectName:String, ?allowMaps:Bool = false):Dynamic
 	{
 		switch(objectName)
@@ -228,9 +207,7 @@ class PyUtils
 		}
 	}
 
-	/**
-	 * Рекурсивно проходит по цепочке свойств ("boyfriend.frameWidth").
-	 */
+
 	public static function getPropertyLoop(split:Array<String>, ?getProperty:Bool=true, ?allowMaps:Bool = false):Dynamic
 	{
 		var obj:Dynamic = getObjectDirectly(split[0]);
@@ -241,11 +218,7 @@ class PyUtils
 		return obj;
 	}
 
-	// --- Анимации, Спрайты и Атласы ---
-	
-	/**
-	 * Генерирует анимацию для FlxSprite по переданной строке или массиву индексов кадров.
-	 */
+
 	public static function addAnimByIndices(obj:String, name:String, prefix:String, indices:Any = null, framerate:Float = 24, loop:Bool = false)
 	{
 		var sprite:FlxSprite = cast getObjectDirectly(obj);
@@ -277,9 +250,7 @@ class PyUtils
 		return false;
 	}
 	
-	/**
-	 * Автоматически подгружает правильный тип графического атласа для спрайта.
-	 */
+
 	public static function loadFrames(spr:FlxSprite, image:String, spriteType:String)
 	{
 		switch(spriteType.toLowerCase().replace(' ', ''))
@@ -298,9 +269,7 @@ class PyUtils
 		}
 	}
 
-	/**
-	 * Полностью уничтожает объект и удаляет его с экрана по его тегу.
-	 */
+
 	public static function destroyObject(tag:String) {
 		var variables = MusicBeatState.getVariables();
 		var obj:FlxSprite = variables.get(tag);
@@ -312,7 +281,6 @@ class PyUtils
 		variables.remove(tag);
 	}
 
-	// --- Таймеры, Твины и Системные настройки ---
 
 	public static function cancelTween(tag:String) {
 		if(!tag.startsWith('tween_')) tag = 'tween_' + formatVariable(tag);
@@ -350,9 +318,7 @@ class PyUtils
 		return sexyProp;
 	}
 
-	/**
-	 * Возвращает текущую ОС, под которую собирается игра (нужно для Python переменных среды).
-	 */
+
 	public static function getGroupStuff(leArray:Dynamic, variable:String, ?allowMaps:Bool = false) {
 		var split:Array<String> = variable.split('.');
 		if(split.length > 1) {
@@ -418,11 +384,9 @@ class PyUtils
         }
         return FlxTweenType.ONESHOT;
     }
-    /*** Возвращает функцию плавности (Ease) на основе строкового имени.*/
     public static function getTweenEaseByString(?ease:String = '') 
     {
         var easeName = ease.toLowerCase().trim();
-        // Использование рефлексии для поиска функции в FlxEase
         var field = Reflect.field(FlxEase, easeName);
         if (field != null) return field;
         return FlxEase.linear;
@@ -524,4 +488,4 @@ class PyUtils
 		#end
 		return null;
 	}
-} // Закрытие класса PyUtils
+}

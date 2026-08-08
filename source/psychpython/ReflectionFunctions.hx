@@ -10,10 +10,6 @@ import psychpython.PyUtils;
 
 using StringTools;
 
-//
-// Функции рефлексии (Reflection), интенсивно нагружающие процессор.
-// Переписаны и адаптированы под архитектуру среды Python (Hython).
-//
 
 class ReflectionFunctions
 {
@@ -21,7 +17,6 @@ class ReflectionFunctions
 
 	public static function implement(funk:psychpython.FunkinPython)
 	{
-		// Получение значения переменной по строковому пути ("boyfriend.x")
 		funk.addLocalCallback("getProperty", function(variable:String, ?allowMaps:Bool = false) {
 			var split:Array<String> = variable.split('.');
 			if(split.length > 1)
@@ -29,7 +24,6 @@ class ReflectionFunctions
 			return PyUtils.getVarInArray(PyUtils.getTargetInstance(), variable, allowMaps);
 		});
 
-		// Изменение значения переменной по строковому пути
 		funk.addLocalCallback("setProperty", function(variable:String, value:Dynamic, ?allowMaps:Bool = false, ?allowInstances:Bool = false) {
 			var split:Array<String> = variable.split('.');
 			if(split.length > 1) {
@@ -40,7 +34,6 @@ class ReflectionFunctions
 			return value;
 		});
 
-		// Получение статического свойства класса напрямую по его имени ("flixel.FlxG", "scoreMultiplier")
 		funk.addLocalCallback("getPropertyFromClass", function(classVar:String, variable:String, ?allowMaps:Bool = false) {
 			var myClass:Dynamic = Type.resolveClass(classVar);
 			if(myClass == null)
@@ -60,7 +53,6 @@ class ReflectionFunctions
 			return PyUtils.getVarInArray(myClass, variable, allowMaps);
 		});
 
-		// Изменение статического свойства класса напрямую по его имени
 		funk.addLocalCallback("setPropertyFromClass", function(classVar:String, variable:String, value:Dynamic, ?allowMaps:Bool = false, ?allowInstances:Bool = false) {
 			var myClass:Dynamic = Type.resolveClass(classVar);
 			if(myClass == null)
@@ -82,7 +74,6 @@ class ReflectionFunctions
 			return value;
 		});
 
-		// Получение свойства элемента внутри группы или массива по его индексу
 		funk.addLocalCallback("getPropertyFromGroup", function(group:String, index:Int, variable:Dynamic, ?allowMaps:Bool = false) {
 			var split:Array<String> = group.split('.');
 			var realObject:Dynamic = null;
@@ -96,7 +87,7 @@ class ReflectionFunctions
 			{
 				switch(Type.typeof(groupOrArray))
 				{
-					case TClass(Array): // Объект является обычным массивом Haxe
+					case TClass(Array):
 						var leArray:Dynamic = realObject[index];
 						if(leArray != null) {
 							var result:Dynamic = null;
@@ -108,7 +99,7 @@ class ReflectionFunctions
 						}
 						FunkinPython.pythonTrace('getPropertyFromGroup: Element $index does not exist instde array or group $group!', false, false, FlxColor.RED);
 
-					default: // Объект является FlxTypedGroup / FlxSpriteGroup
+					default:
 						var result:Dynamic = PyUtils.getGroupStuff(realObject.members[index], variable, allowMaps);
 						return result;
 				}
@@ -117,7 +108,6 @@ class ReflectionFunctions
 			return null;
 		});
 
-		// Изменение свойства элемента внутри группы или массива по его индексу
 		funk.addLocalCallback("setPropertyFromGroup", function(group:String, index:Int, variable:Dynamic, value:Dynamic, ?allowMaps:Bool = false, ?allowInstances:Bool = false) {
 			var split:Array<String> = group.split('.');
 			var realObject:Dynamic = null;
@@ -130,7 +120,7 @@ class ReflectionFunctions
 			{
 				switch(Type.typeof(realObject))
 				{
-					case TClass(Array): // Работа с массивом Haxe
+					case TClass(Array):
 						var leArray:Dynamic = realObject[index];
 						if(leArray != null)
 						{
@@ -142,7 +132,7 @@ class ReflectionFunctions
 							PyUtils.setGroupStuff(leArray, variable, allowInstances ? parseInstances(value) : value, allowMaps);
 						}
 
-					default: // Работа с FlxGroup.members
+					default:
 						PyUtils.setGroupStuff(realObject.members[index], variable, allowInstances ? parseInstances(value) : value, allowMaps);
 				}
 			}
@@ -150,7 +140,6 @@ class ReflectionFunctions
 			return value;
 		});
 
-		// Добавление графического объекта (FlxSprite) в игровую группу или массив
 		funk.addLocalCallback("addToGroup", function(group:String, tag:String, ?index:Int = -1) {
 			var obj:FlxSprite = PyUtils.getObjectDirectly(tag);
 			if(obj == null || obj.destroy == null)
@@ -179,7 +168,6 @@ class ReflectionFunctions
 			else groupOrArray.insert(index, obj);
 		});
 
-		// Удаление объекта из игровой группы с опциональным полным уничтожением (destroy)
 		funk.addLocalCallback("removeFromGroup", function(group:String, ?index:Int = -1, ?tag:String = null, ?destroy:Bool = true) {
 			var obj:FlxSprite = null;
 			if(tag != null)
@@ -216,7 +204,6 @@ class ReflectionFunctions
 			}
 		});
 		
-		// Динамический вызов любого метода у любого инстанса на сцене игры
 		funk.addLocalCallback("callMethod", function(funcToRun:String, ?args:Array<Dynamic>) {
 			var parent:Dynamic = PlayState.instance;
 			var split:Array<String> = funcToRun.split('.');
@@ -233,12 +220,10 @@ class ReflectionFunctions
 			return Reflect.callMethod(null, parent, parseInstances(args));
 		});
 
-		// Вызов статического метода у Haxe-класса
 		funk.addLocalCallback("callMethodFromClass", function(className:String, funcToRun:String, ?args:Array<Dynamic>) {
 			return callMethodFromObject(Type.resolveClass(className), funcToRun, parseInstances(args));
 		});
 
-		// Создание нового экземпляра класса и сохранение его в глобальные переменные скриптов
 		funk.addLocalCallback("createInstance", function(variableToSave:String, className:String, ?args:Array<Dynamic>) {
 			if (!Std.isOfType(args, Array)) args = [];
 			variableToSave = variableToSave.trim().replace('.', '');
@@ -265,7 +250,6 @@ class ReflectionFunctions
 			return false;
 		});
 
-// Добавление кастомного сгенерированного инстанса на игровой экран
         funk.addLocalCallback("addInstance", function(objectName:String, ?inFront:Bool = false) {
             var savedObj:Dynamic = MusicBeatState.getVariables().get(objectName);
             if(savedObj != null){
@@ -279,7 +263,7 @@ class ReflectionFunctions
             }
             else FunkinPython.pythonTrace('addInstance: Cannot add something that does not exist. ($objectName)', false, false, FlxColor.RED);
         });
-        // Форматирование строкового аргумента под специальный инстанс-тег
+
         funk.addLocalCallback("instanceArg", function(instanceName:String, ?className:String = null) {
             var retStr:String = '$instanceStr::$instanceName';
             if(className != null) retStr += '::$className';

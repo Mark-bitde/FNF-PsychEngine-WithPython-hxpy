@@ -81,11 +81,11 @@ class FunkinPython {
         }
 		var game:PlayState = PlayState.instance;
         if(game != null && game.pythonArray != null) {
-            game.pythonArray.push(this); // Добавляем cast для безопасности типизации
+            game.pythonArray.push(this);
         }
 		var myFolder:Array<String> = this.scriptFile.split('/');
 		#if MODS_ALLOWED
-		if(myFolder[0] + '/' == Paths.mods() && (Mods.currentModDirectory == myFolder[1] || Mods.getGlobalMods().contains(myFolder[1]))) // Внутри папки mods
+		if(myFolder[0] + '/' == Paths.mods() && (Mods.currentModDirectory == myFolder[1] || Mods.getGlobalMods().contains(myFolder[1])))
 			this.modFolder = myFolder[1];
 		#end
 		
@@ -224,7 +224,7 @@ class FunkinPython {
         set("getRunningScripts", function():Array<String> {
 			var runningScripts:Array<String> = [];
 			
-			// Собираем имена всех активных Python-скриптов
+			
 			if (game != null && game.pythonArray != null) {
 				for (script in game.pythonArray) {
 					if (script != null) runningScripts.push(script.scriptName);
@@ -1588,38 +1588,54 @@ class FunkinPython {
 			{
 				var pyCode:String = sys.io.File.getContent(scriptName);
 				
-				// Очищаем код от виндовых переносов строк и табов перед отправкой в C API
+				
 				pyCode = StringTools.replace(pyCode, "\t", "    ");
 				pyCode = StringTools.replace(pyCode, "\r\n", "\n");
 				
-				// --- МАГИЯ ИЗОЛЯЦИИ КАК В LUA ---
-				// Генерируем уникальное и безопасное имя для словаря этого скрипта
+				// Generating a unique and safe name for this script's dictionary
 				var safeName:String = scriptFile.split("/").pop().split("\\").pop().split(".")[0];
 				safeName = ~/[^a-zA-Z0-9_]/g.replace(safeName, ""); 
 
-				// Создаем Python-обертку, которая выполнит код файла в изолированном контексте
+				// Creating a Python wrapper that will execute the file's code in an isolated context
 				var isolatedWrapper:String = "
+
+import sys
+
+# NO CHEATERS!!!
+# do not remove this pls. it will be better if you leave this code.
+# Standard system modules are blocked to keep players' PCs safe and FNF running at smooth 60+ FPS.
+# Heavy modders: if you know what you are doing, just remove this blockade in the source and compile your own build. Let's cook!
+dangerous_modules = [
+    'os', 'subprocess', 'shutil', 'ctypes', 
+    'importlib', 'nt', 'posix', 'pathlib', 'io'
+]
+
+for mod in dangerous_modules:
+    if mod in sys.modules:
+        del sys.modules[mod]
+
+for mod in dangerous_modules:
+    sys.modules[mod] = None
+
 if 'python_mods' not in globals():
     global python_mods
     python_mods = {}
 
-# Создаем личную независимую область памяти для этого скрипта
-# Копируем туда все текущие глобальные переменные и функции, которые игра уже успела выдать через set()
+# Creating a private, independent memory area for this script
+# Copying all current global variables and functions that the game has already issued via set() into it
 python_mods['" + safeName + "'] = {k: v for k, v in globals().items() if not k.startswith('__') and k != 'python_mods'}
 
-# Выполняем весь код файла строго внутри его личного словаря
+# Execute the entire file code strictly within its personal dictionary
 exec('''" + pyCode + "''', python_mods['" + safeName + "'])
 ";
 
-				// Нативно выполняем изолированную обертку скрипта в контексте Python
-				// Используем ваш проверенный метод simpleString, который C++ компилятор гарантированно пропустит
+				
 				this.result = hxpy.PyRun.simpleString((cast isolatedWrapper:cpp.ConstCharStar));
 				trace(this.result);
 				if (!this.result) 
 				{
 					trace("Python script loaded successfully via hxpy (Isolated): " + scriptName);
 					
-					// Вызываем самый первый ивент мода, который мы настроили через RawPointer методы
 					call('onCreate', []);
 				} 
 				else 
@@ -1644,31 +1660,29 @@ exec('''" + pyCode + "''', python_mods['" + safeName + "'])
     }
     public function stop()
     {
-        // 1. Проверяем, не закрыт ли скрипт уже, чтобы не вызвать повторный краш
+        // 1. Check if the script is already closed to avoid causing another crash.
         if (closed) return;
 
-		// 1. Получаем уникальное безопасное имя этого скрипта (точно так же, как при загрузке)
+		// 1. Get a unique, safe name for this script (just like when loading)
 		var safeNameArray:Array<String> = scriptFile.split("/").pop().split("\\").pop().split(".");
 		var rawSafeName:String = safeNameArray[0];
 		rawSafeName = ~/[^a-zA-Z0-9_]/g.replace(rawSafeName, "");
 
-		// 2. Вызываем финальный ивент onDestroy внутри скрипта, если он там прописан
-		call('onDestroy', []);
+		
 
-		// --- ТОТ САМЫЙ ГЕНИАЛЬНЫЙ МЕТОД ОЧИСТКИ ПАМЯТИ ---
-		// Мы пишем мини-скрипт, который полностью удаляет словарь этого мода из памяти Python.
-		// Метод .clear() освобождает все ссылки внутри словаря, а del полностью стирает саму ячейку,
-		// заставляя сборщик мусора Python (Garbage Collector) мгновенно очистить оперативку.
+		// Writing a mini-script that completely deletes this mod's dictionary from Python memory.
+		// The .clear() method frees all references within the dictionary, and del completely erases the cell itself,
+		// forcing the Python garbage collector to immediately clear the RAM
 		var cleanMemoryCode:String = "
 	if 'python_mods' in globals() and '" + rawSafeName + "' in python_mods:
 		python_mods['" + rawSafeName + "'].clear()
 		del python_mods['" + rawSafeName + "']
 	";
 
-		// Выполняем очистку через нашу рабочую строку
+
 		hxpy.PyRun.simpleString((cast cleanMemoryCode:cpp.ConstCharStar));
 
-		// 3. Помечаем скрипт как закрытый в Haxe
+
 		closed = true;
         
         #if HSCRIPT_ALLOWED
@@ -1678,17 +1692,15 @@ exec('''" + pyCode + "''', python_mods['" + safeName + "'])
             hscript = null;
         }
         #end
-
-        trace('FunkinPython: Скрипт успешно остановлен и выгружен: ' + scriptName);
     }
 
 
     public function addLocalCallback(name:String, myFunction:Dynamic)
     {
-            // 1. Сохраняем в локальную карту для совместимости, если другие системы движка её опрашивают
+        // 1. Save to the local map for compatibility if other engine systems query it.
         callbacks.set(name, myFunction);
 
-            // 2. В отличие от Lua, в Hython мы СРАЗУ регистрируем реальную функцию в пространство имён Python!
+		// 2. Unlike Lua, in Hython we IMMEDIATELY register the actual function in the Python namespace!
         if (Py.isInitialized()) {
             set(name, myFunction);
         }
@@ -1696,7 +1708,6 @@ exec('''" + pyCode + "''', python_mods['" + safeName + "'])
 	#if (!flash && sys)
 	public var runtimeShaders:Map<String, Array<String>> = new Map<String, Array<String>>();
 	#end
-	// --- СТАБИЛЬНЫЙ ОРИГИНАЛЬНЫЙ ЦЕНТРАЛЬНЫЙ КОНВЕРТЕР ТИПОВ ---
 	private static inline function convertHaxeToPy(value:Dynamic):cpp.RawPointer<hxpy.PyObject> {
 		if (value == null) return Py.NONE;
 		if (Std.isOfType(value, Int)) {
@@ -1709,7 +1720,7 @@ exec('''" + pyCode + "''', python_mods['" + safeName + "'])
 		}
 		if (Std.isOfType(value, String)) {
 			var strVal:String = cast value; 
-			// String.length и __s гарантируют корректную передачу кириллицы без искажений
+			// String.length and __s guarantee correct transmission of Cyrillic characters without distortion
 			return untyped __cpp__("PyUnicode_FromStringAndSize({0}.__s, {0}.length)", strVal);
 		}
 		if (Std.isOfType(value, Bool)) {
@@ -1719,7 +1730,6 @@ exec('''" + pyCode + "''', python_mods['" + safeName + "'])
 		return Py.NONE;
 	}
 
-	// --- ОРИГИНАЛЬНЫЙ СТАТИЧЕСКИЙ C++ МОСТ (ВЕРСИЯ, КОТОРАЯ СТАБИЛЬНО РАБОТАЛА) ---
 	@:void
 	private static function universalCallbackBridge(self:cpp.RawPointer<hxpy.PyObject>, args:cpp.RawPointer<hxpy.PyObject>):cpp.RawPointer<hxpy.PyObject> {
 		var funcId:Int = cast untyped __cpp__("PyLong_AsLong({0})", self);
@@ -1752,7 +1762,6 @@ exec('''" + pyCode + "''', python_mods['" + safeName + "'])
 		return convertHaxeToPy(result);
 	}
 
-	// --- ОБНОВЛЕННЫЙ МЕТОД SET С ПОДДЕРЖКОЙ ИЗОЛЯЦИИ ---
 	public function set(variable:String, value:Dynamic):Void {
 		var mainModule:cpp.RawPointer<hxpy.PyObject> = untyped __cpp__("PyImport_AddModule(\"__main__\")");
 		var mainDict:cpp.RawPointer<hxpy.PyObject> = PyModule.getDict(mainModule);
@@ -1764,7 +1773,7 @@ exec('''" + pyCode + "''', python_mods['" + safeName + "'])
 			
 			var pyId:cpp.RawPointer<hxpy.PyObject> = untyped __cpp__("PyLong_FromLong({0})", id);
 
-			// Стабильная плоская лямбда C++ для MSVC остается нетронутой
+			// The stable flat C++ lambda for MSVC remains untouched
 			pyObject = untyped __cpp__("[] (const char* name, PyObject* idObj) -> PyObject* {
 				PyMethodDef* def = new PyMethodDef();
 				#ifdef _MSC_VER
@@ -1789,12 +1798,12 @@ exec('''" + pyCode + "''', python_mods['" + safeName + "'])
 
 		if (pyObject != null) {
 			var cVar:cpp.ConstCharStar = cast variable;
-			// 1. Сначала записываем переменную в глобальный словарь, как и раньше
+			// 1. First, writing the variable to the global dictionary, as before
 			untyped __cpp__("PyDict_SetItemString({0}, {1}, {2})", mainDict, cVar, pyObject);
 			untyped __cpp__("Py_DECREF({0})", pyObject);
 
-			// 2. СИНХРОНИЗАЦИЯ С КОНТЕКСТОМ: Копируем эту переменную в личный словарь скрипта
-			// Это гарантирует, что внутри изолированного exec() переменная всегда будет актуальной
+			// 2. SYNCHRONIZATION WITH CONTEXT: Copy this variable to the script's private dictionary
+			// This ensures that the variable will always be up-to-date within an isolated exec()
 			var safeNameArray:Array<String> = scriptFile.split("/").pop().split("\\").pop().split(".");
 			var rawSafeName:String = safeNameArray[0];
 			rawSafeName = ~/[^a-zA-Z0-9_]/g.replace(rawSafeName, "");
@@ -1807,20 +1816,20 @@ if 'python_mods' in globals() and '" + rawSafeName + "' in python_mods:
 		}
 	}
 
-	// --- ОБНОВЛЕННЫЙ МЕТОД CALL (ЧЕРЕЗ ТЕКСТОВУЮ ИЗОЛЯЦИЮ) ---
+
 	public function call(funcName:String, args:Array<Dynamic>):Dynamic {
 		if (closed) return PyUtils.Function_Continue;
 		lastCalledScript = this;
 
 		try {
-			// Получаем уникальное имя этого скрипта, чтобы обратиться к его словарю
+			// Get the unique name of this script to access its dictionary
 			var safeNameArray:Array<String> = scriptFile.split("/").pop().split("\\").pop().split(".");
-			var rawSafeName:String = safeNameArray[0]; // Берем имя файла без расширения .py
+			var rawSafeName:String = safeNameArray[0];
 
-			// Очищаем от любых запрещенных символов
+			// Clearing from any prohibited characters
 			rawSafeName = ~/[^a-zA-Z0-9_]/g.replace(rawSafeName, ""); 
-			// Формируем аргументы. Если это числа или строки, склеиваем их через запятую.
-			// Для строк автоматически добавятся кавычки, чтобы Python понял их тип
+			// Form the arguments. If they are numbers or strings, concatenate them, separated by commas.
+			// Strings will automatically have quotes added to them so that Python understands their type.
 			var formattedArgs:Array<String> = [];
 			if (args == null) args = [];
 			for (arg in args) {
@@ -1828,11 +1837,11 @@ if 'python_mods' in globals() and '" + rawSafeName + "' in python_mods:
 					formattedArgs.push("'" + arg + "'");
 				} 
 				else if (Std.isOfType(arg, Bool)) {
-					// ИСПРАВЛЕНИЕ: переводим Haxe true/false в Python True/False
+					// Converting Haxe true/false to Python True/False
 					formattedArgs.push(arg ? "True" : "False");
 				} 
 				else if (arg == null) {
-					// ИСПРАВЛЕНИЕ: переводим null в Python None
+					// Converting null to Python None
 					formattedArgs.push("None");
 				}
 				else {
@@ -1841,15 +1850,15 @@ if 'python_mods' in globals() and '" + rawSafeName + "' in python_mods:
 			}
 			var argString:String = formattedArgs.join(", ");
 
-			// Пишем мини-скрипт для вызова функции из изолированного контекста
+			// Writing a mini-script to call a function from an isolated context
 			var callCode:String = "
 if 'python_mods' in globals() and '" + rawSafeName + "' in python_mods:
     mod_ctx = python_mods['" + rawSafeName + "']
     if '" + funcName + "' in mod_ctx and callable(mod_ctx['" + funcName + "']):
-        mod_ctx['" + funcName + "'](" + argString + ")
+        _tmp = mod_ctx['" + funcName + "'](" + argString + "); del _tmp
 ";
 
-			// Нативно выполняем вызов функции через рабочую строку
+			// Executing
 			hxpy.PyRun.simpleString((cast callCode:cpp.ConstCharStar));
 			return PyUtils.Function_Continue;
 		} 
@@ -1862,30 +1871,24 @@ if 'python_mods' in globals() and '" + rawSafeName + "' in python_mods:
 
 	public function findScript(scriptFile:String, ext:String = '.py'):String
 	{
-		// 1. Проверяем и добавляем расширение, если мододел его забыл указать
+		
 		if(!scriptFile.endsWith(ext)) scriptFile += ext;
 
-		// 2. Формируем путь для базовых ассетов игры (внутри папки assets/)
 		var path:String = Paths.getPath(scriptFile, TEXT);
 
 		#if MODS_ALLOWED
-		// 3. Формируем путь для папки модов (mods/ваша_папка/...)
 		var modPath:String = Paths.mods(scriptFile);
 
-		// Сначала проверяем, есть ли скрипт в активной папке модов
 		if(FileSystem.exists(modPath)) {
 			return modPath;
 		}
-		// Затем проверяем в общей папке ассетов на жестком диске
 		else if(FileSystem.exists(path)) {
 			return path;
 		}
-		// Проверяем по абсолютному или сырому пути, переданному в метод
 		else if(FileSystem.exists(scriptFile)) {
 			return scriptFile;
 		}
 		#else
-		// Если моды отключены, проверяем только встроенные ассеты через OpenFL Assets
 		if(Assets.exists(path, TEXT)) {
 			return path;
 		}
@@ -1894,7 +1897,7 @@ if 'python_mods' in globals() and '" + rawSafeName + "' in python_mods:
 		}
 		#end
 
-		return null; // Скрипт не найден
+		return null;
 	}
 	public function initPyShader(name:String)
 	{
@@ -1967,22 +1970,17 @@ if 'python_mods' in globals() and '" + rawSafeName + "' in python_mods:
 
     public static function getBool(variable:String):Bool 
     {
-        // 1. Защита от вызовов, если ни один скрипт еще не запускался
         if (lastCalledScript == null || lastCalledScript.closed) return false;
 
-        // 2. Получаем глобальный словарь Python через инлайн C++
         var mainModule:cpp.RawPointer<hxpy.PyObject> = untyped __cpp__("PyImport_AddModule(\"__main__\")");
         var mainDict:cpp.RawPointer<hxpy.PyObject> = hxpy.PyModule.getDict(mainModule);
         
-        // 3. Вытаскиваем переменную из Python по её имени
         var pyObj:cpp.RawPointer<hxpy.PyObject> = untyped __cpp__("PyDict_GetItemString({0}, {1}.__s)", mainDict, variable);
         
-        // Если такой переменной в Python-скрипте вообще нет — возвращаем false
         if (pyObj == null) {
             return false;
         }
 
-        // 4. Вызываем оригинальную функцию Python C API напрямую через C++
         return (pyObj == hxpy.Py.TRUE);
     }
 
