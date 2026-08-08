@@ -1658,41 +1658,36 @@ exec('''" + pyCode + "''', python_mods['" + safeName + "'])
 		}
 
     }
-    public function stop()
-    {
-        // 1. Check if the script is already closed to avoid causing another crash.
-        if (closed) return;
+	public function stop()
+	{
+		if (closed) return;
 
-		// 1. Get a unique, safe name for this script (just like when loading)
 		var safeNameArray:Array<String> = scriptFile.split("/").pop().split("\\").pop().split(".");
 		var rawSafeName:String = safeNameArray[0];
 		rawSafeName = ~/[^a-zA-Z0-9_]/g.replace(rawSafeName, "");
 
-		
-
-		// Writing a mini-script that completely deletes this mod's dictionary from Python memory.
-		// The .clear() method frees all references within the dictionary, and del completely erases the cell itself,
-		// forcing the Python garbage collector to immediately clear the RAM
 		var cleanMemoryCode:String = "
 	if 'python_mods' in globals() and '" + rawSafeName + "' in python_mods:
 		python_mods['" + rawSafeName + "'].clear()
 		del python_mods['" + rawSafeName + "']
 	";
-
-
 		hxpy.PyRun.simpleString((cast cleanMemoryCode:cpp.ConstCharStar));
 
+		if (functionRegistry != null) {
+			functionRegistry.clear();
+		}
 
 		closed = true;
-        
-        #if HSCRIPT_ALLOWED
-        if (hscript != null)
-        {
-            hscript.destroy();
-            hscript = null;
-        }
-        #end
-    }
+		
+		#if HSCRIPT_ALLOWED
+		if (hscript != null)
+		{
+			hscript.destroy();
+			hscript = null;
+		}
+		#end
+	}
+
 
 
     public function addLocalCallback(name:String, myFunction:Dynamic)
@@ -1816,50 +1811,100 @@ if 'python_mods' in globals() and '" + rawSafeName + "' in python_mods:
 		}
 	}
 
+	public static function convertPyToHaxe(pyObj:cpp.RawPointer<hxpy.PyObject>):Dynamic {
+		if (pyObj == null || pyObj == Py.NONE) {
+			return null;
+		}
+
+		// 1. Проверяем на Boolean (в C-API булевы типы — это подвид Long)
+		if (untyped __cpp__("PyBool_Check({0})", pyObj) == 1) {
+			return (pyObj == Py.TRUE);
+		}
+
+		// 2. Проверяем на целое число (Integer / Long)
+		if (untyped __cpp__("PyLong_Check({0})", pyObj) == 1) {
+			var result:Int = untyped __cpp__("(int)PyLong_AsLong({0})", pyObj);
+			return result;
+		}
+
+		// 3. Проверяем на число с плавающей точкой (Float)
+		if (untyped __cpp__("PyFloat_Check({0})", pyObj) == 1) {
+			var result:Float = untyped __cpp__("PyFloat_AsDouble({0})", pyObj);
+			return result;
+		}
+
+		// 4. Проверяем на строку (Unicode в Python 3)
+		if (untyped __cpp__("PyUnicode_Check({0})", pyObj) == 1) {
+			// Вытаскиваем сырую C-строку в UTF-8
+			var cStr:cpp.ConstCharStar = untyped __cpp__("PyUnicode_AsUTF8({0})", pyObj);
+			if (cStr != null) {
+				// Конвертируем C-строку обратно в родной String фреймворка Haxe
+				return Std.string(cStr);
+			}
+		}
+
+		// 5. Если прилетело что-то сложное (список, словарь или кастомный класс Python)
+		// Пока возвращаем null или константу, чтобы не ломать логику движка
+		return null;
+	}
 
 	public function call(funcName:String, args:Array<Dynamic>):Dynamic {
 		if (closed) return PyUtils.Function_Continue;
 		lastCalledScript = this;
 
 		try {
-			// Get the unique name of this script to access its dictionary
+			// 1. Получаем уникальное имя скрипта
 			var safeNameArray:Array<String> = scriptFile.split("/").pop().split("\\").pop().split(".");
 			var rawSafeName:String = safeNameArray[0];
-
-			// Clearing from any prohibited characters
 			rawSafeName = ~/[^a-zA-Z0-9_]/g.replace(rawSafeName, ""); 
-			// Form the arguments. If they are numbers or strings, concatenate them, separated by commas.
-			// Strings will automatically have quotes added to them so that Python understands their type.
-			var formattedArgs:Array<String> = [];
-			if (args == null) args = [];
-			for (arg in args) {
-				if (Std.isOfType(arg, String)) {
-					formattedArgs.push("'" + arg + "'");
-				} 
-				else if (Std.isOfType(arg, Bool)) {
-					// Converting Haxe true/false to Python True/False
-					formattedArgs.push(arg ? "True" : "False");
-				} 
-				else if (arg == null) {
-					// Converting null to Python None
-					formattedArgs.push("None");
+
+			// 2. Достаем модуль/словарь python_mods из __main__ средствами C-API
+			var mainModule:cpp.RawPointer<hxpy.PyObject> = untyped __cpp__("PyImport_AddModule(\"__main__\")");
+			var mainDict:cpp.RawPointer<hxpy.PyObject> = PyModule.getDict(mainModule);
+			
+			// Ищем python_mods
+			var pyMods:cpp.RawPointer<hxpy.PyObject> = untyped __cpp__("PyDict_GetItemString({0}, \"python_mods\")", mainDict);
+			if (pyMods == null) return PyUtils.Function_Continue;
+
+			// Достаем контекст нашего скрипта: python_mods['имя_скрипта']
+			var scriptCtx:cpp.RawPointer<hxpy.PyObject> = untyped __cpp__("PyDict_GetItemString({0}, {1}.__s)", pyMods, rawSafeName);
+			if (scriptCtx == null) return PyUtils.Function_Continue;
+
+			// Ищем саму функцию внутри контекста скрипта
+			var pyFunc:cpp.RawPointer<hxpy.PyObject> = untyped __cpp__("PyDict_GetItemString({0}, {1}.__s)", scriptCtx, funcName);
+			
+			// Проверяем, существует ли она и можно ли её вызвать (callable)
+			if (pyFunc != null && untyped __cpp__("PyCallable_Check({0})", pyFunc) == 1) {
+				
+				// 3. Собираем аргументы в PyTuple (родной кортеж Python)
+				var len:Int = (args != null) ? args.length : 0;
+				var pyArgs:cpp.RawPointer<hxpy.PyObject> = untyped __cpp__("PyTuple_New({0})", len);
+				
+				if (args != null) {
+					for (i in 0...len) {
+						var pyArg:cpp.RawPointer<hxpy.PyObject> = convertHaxeToPy(args[i]); // Используем ваш конвертер!
+						// Вставляем аргумент в кортеж (PyTuple_SetItem «крадет» ссылку, INCREF/DECREF не нужен)
+						untyped __cpp__("PyTuple_SetItem({0}, {1}, {2})", pyArgs, i, pyArg);
+					}
 				}
-				else {
-					formattedArgs.push(Std.string(arg));
+
+				// 4. ВЫЗЫВАЕМ ФУНКЦИЮ НАПРЯМУЮ В ПАМЯТИ (Молниеносно!)
+				var pyResult:cpp.RawPointer<hxpy.PyObject> = untyped __cpp__("PyObject_CallObject({0}, {1})", pyFunc, pyArgs);
+				untyped __cpp__("Py_DECREF({0})", pyArgs); // Чистим кортеж аргументов
+
+				if (pyResult != null) {
+					// 5. Конвертируем результат обратно в Haxe!
+					// (Вам понадобится зеркальная функция, например, convertPyToHaxe)
+					var haxeResult:Dynamic = convertPyToHaxe(pyResult); 
+					untyped __cpp__("Py_DECREF({0})", pyResult); // Чистим результат
+					
+					return haxeResult; // Теперь мы возвращаем реальное значение из Python!
+				} else {
+					// Ошибка внутри самой Python функции
+					untyped __cpp__("PyErr_Print()"); // Выводим ошибку Python в консоль
 				}
 			}
-			var argString:String = formattedArgs.join(", ");
-
-			// Writing a mini-script to call a function from an isolated context
-			var callCode:String = "
-if 'python_mods' in globals() and '" + rawSafeName + "' in python_mods:
-    mod_ctx = python_mods['" + rawSafeName + "']
-    if '" + funcName + "' in mod_ctx and callable(mod_ctx['" + funcName + "']):
-        _tmp = mod_ctx['" + funcName + "'](" + argString + "); del _tmp
-";
-
-			// Executing
-			hxpy.PyRun.simpleString((cast callCode:cpp.ConstCharStar));
+			
 			return PyUtils.Function_Continue;
 		} 
 		catch(e:haxe.Exception) {
@@ -1868,6 +1913,7 @@ if 'python_mods' in globals() and '" + rawSafeName + "' in python_mods:
 
 		return PyUtils.Function_Continue;
 	}
+
 
 	public function findScript(scriptFile:String, ext:String = '.py'):String
 	{
