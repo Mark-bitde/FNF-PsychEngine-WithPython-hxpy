@@ -45,7 +45,9 @@ if curBeat % 2 == 0:
 Colon: after the cycle, function("def"), class and "if" you should leave a colon(":")
 
 Trailing semicolon: you can leave a trailing semicolon to separate the commands(like:
+```python
 debugPrint("This is the first command!"); debugPrint("This is the second command")
+```
 ). But don't leave a trailing semicolon on empty string
 
 
