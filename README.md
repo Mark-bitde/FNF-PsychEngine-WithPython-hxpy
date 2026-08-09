@@ -36,9 +36,11 @@ This engine delivers a bulletproof, high-performance runtime for Friday Night Fu
 
 The end of indentation is the end of current block (like:
 
-## if curBeat % 2 == 0:
-##    debugPrint("curBeat is even")
-##)
+```python
+if curBeat % 2 == 0:
+    debugPrint("curBeat is even")
+```
+)
 
 Colon: after the cycle, function("def"), class and "if" you should leave a colon(":")
 
