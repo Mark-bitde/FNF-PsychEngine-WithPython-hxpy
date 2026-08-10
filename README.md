@@ -30,6 +30,31 @@ This engine delivers a bulletproof, high-performance runtime for Friday Night Fu
 * **Haxe-Controlled Filesystem:** Modders can interact with files strictly through custom, secure Haxe bridges (`modReadFile` / `modSaveFile`), ensuring player safety.
 * **Bytecode Execution Optimization:** By utilizing native Python pre-compilation (`.pyc` structures), runtime calls like `opponentNoteHit` skip text-parsing overhead completely. The virtual machine executes pure binary bytecode, resulting in rock-solid FPS and zero micro-stutters during heavy note spam.
 
+## 🐍 Quick Python Syntax Guide (For Lua/Haxe Devs)
+
+--- About the Python syntax ---
+
+The end of indentation is the end of current block (like:
+```python
+if curBeat % 2 == 0:
+    debugPrint("curBeat is even")
+```
+)
+
+Colon: after the cycle, function("def"), class and "if" you should leave a colon(":")
+
+Trailing semicolon: you can leave a trailing semicolon to separate the commands(like:
+```python
+debugPrint("This is the first command!"); debugPrint("This is the second command")
+```
+). But don't leave a trailing semicolon on empty string
+
+
+The expression operators: "==", "!=", ">", "<", ">=", "<=", "or"(like Haxe "||"), "and"(like Haxe "&&"),
+"not", "in", "is"
+
+About the "if" statement: instead of "elseif" in Lua and "else if" in Haxe Python contains "elif"(but does the same)
+
 ## 📝 Script Example (`script.py`)
 
 Here is a quick look at how clean, readable, and powerful Python scripts look in this engine. It fully supports native object-oriented classes and standard Friday Night Funkin' event hooks with safe local state tracking:
@@ -79,4 +104,13 @@ active_mod_instance = CustomUiMod()
 def onCreatePost(): active_mod_instance.onCreatePost()
 def onBeatHit(): active_mod_instance.onBeatHit()
 def opponentNoteHit(i, d, t, s): active_mod_instance.opponentNoteHit(i, d, t, s)
+```
+
+--- Note ---
+The debugPrint() method doesn't print all complex Python objects (like lists [] or dictionaries {}) directly due to Haxe type conversion.
+If you want to safely print any object, always wrap it in str():
+```python
+debugPrint([1, 2, 3]) # Might print the empty space
+
+debugPrint(str([1, 2, 3])) # Prints beatifully
 ```
