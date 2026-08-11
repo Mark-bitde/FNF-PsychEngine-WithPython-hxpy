@@ -1565,7 +1565,12 @@ class FunkinPython {
 			pythonTrace("getModSetting: Mods are disabled in this build!", false, false, FlxColor.RED);
 			#end
 		});
-		set("debugPrint", function(text:Dynamic = '', color:String = 'WHITE') PlayState.instance.addTextToDebug(text, CoolUtil.colorFromString(color)));
+		// Recommended to use debugPrint()
+		set("finalDebug", function(text:Dynamic = '', color:String = 'WHITE') PlayState.instance.addTextToDebug(text, CoolUtil.colorFromString(color)));
+		PyRun.simpleString("
+def debugPrint(text = '', color:str = 'WHITE'):
+	finalDebug(str(text), color)
+		");
 		addLocalCallback("close", function() {
 			closed = true;
 			trace('Closing script $scriptName');
@@ -1600,7 +1605,8 @@ class FunkinPython {
 				var isolatedWrapper:String = "
 
 import sys
-
+import gc
+gc.disable()
 # NO CHEATERS!!!
 # do not remove this pls. it will be better if you leave this code.
 # Standard system modules are blocked to keep players' PCs safe and FNF running at smooth 60+ FPS.
@@ -1667,10 +1673,12 @@ exec('''" + pyCode + "''', python_mods['" + safeName + "'])
 		rawSafeName = ~/[^a-zA-Z0-9_]/g.replace(rawSafeName, "");
 
 		var cleanMemoryCode:String = "
-	if 'python_mods' in globals() and '" + rawSafeName + "' in python_mods:
-		python_mods['" + rawSafeName + "'].clear()
-		del python_mods['" + rawSafeName + "']
-	";
+if 'python_mods' in globals() and '" + rawSafeName + "' in python_mods:
+	python_mods['" + rawSafeName + "'].clear()
+	del python_mods['" + rawSafeName + "']
+import gc
+gc.collect()
+";
 		hxpy.PyRun.simpleString((cast cleanMemoryCode:cpp.ConstCharStar));
 
 		if (functionRegistry != null) {
@@ -1867,11 +1875,11 @@ if 'python_mods' in globals() and '" + rawSafeName + "' in python_mods:
 			if (pyMods == null) return PyUtils.Function_Continue;
 
 			// Достаем контекст нашего скрипта: python_mods['имя_скрипта']
-			var scriptCtx:cpp.RawPointer<hxpy.PyObject> = untyped __cpp__("PyDict_GetItemString({0}, {1}.__s)", pyMods, rawSafeName);
-			if (scriptCtx == null) return PyUtils.Function_Continue;
+			var scriptCtxLocal:cpp.RawPointer<hxpy.PyObject> = untyped __cpp__("PyDict_GetItemString({0}, {1}.__s)", pyMods, rawSafeName);
+			if (scriptCtxLocal == null) return PyUtils.Function_Continue;
 
 			// Ищем саму функцию внутри контекста скрипта
-			var pyFunc:cpp.RawPointer<hxpy.PyObject> = untyped __cpp__("PyDict_GetItemString({0}, {1}.__s)", scriptCtx, funcName);
+			var pyFunc:cpp.RawPointer<hxpy.PyObject> = untyped __cpp__("PyDict_GetItemString({0}, {1}.__s)", scriptCtxLocal, funcName);
 			
 			// Проверяем, существует ли она и можно ли её вызвать (callable)
 			if (pyFunc != null && untyped __cpp__("PyCallable_Check({0})", pyFunc) == 1) {
@@ -1882,25 +1890,34 @@ if 'python_mods' in globals() and '" + rawSafeName + "' in python_mods:
 				
 				if (args != null) {
 					for (i in 0...len) {
-						var pyArg:cpp.RawPointer<hxpy.PyObject> = convertHaxeToPy(args[i]); // Используем ваш конвертер!
-						// Вставляем аргумент в кортеж (PyTuple_SetItem «крадет» ссылку, INCREF/DECREF не нужен)
+						var pyArg:cpp.RawPointer<hxpy.PyObject> = convertHaxeToPy(args[i]);
+						
+						// ЗАЩИТА СИНГЛТОНОВ: Если конвертер вернул None, True или False, 
+						// нужно сделать INCREF, потому что PyTuple_SetItem заберет эту ссылку себе!
+						if (pyArg == Py.NONE || pyArg == Py.TRUE || pyArg == Py.FALSE) {
+							untyped __cpp__("Py_INCREF({0})", pyArg);
+						}
+						
 						untyped __cpp__("PyTuple_SetItem({0}, {1}, {2})", pyArgs, i, pyArg);
 					}
 				}
 
-				// 4. ВЫЗЫВАЕМ ФУНКЦИЮ НАПРЯМУЮ В ПАМЯТИ (Молниеносно!)
+				// 4. ВЫЗЫВАЕМ ФУНКЦИЮ НАПРЯМУЮ В ПАМЯТИ
 				var pyResult:cpp.RawPointer<hxpy.PyObject> = untyped __cpp__("PyObject_CallObject({0}, {1})", pyFunc, pyArgs);
 				untyped __cpp__("Py_DECREF({0})", pyArgs); // Чистим кортеж аргументов
 
 				if (pyResult != null) {
 					// 5. Конвертируем результат обратно в Haxe!
-					// (Вам понадобится зеркальная функция, например, convertPyToHaxe)
 					var haxeResult:Dynamic = convertPyToHaxe(pyResult); 
-					untyped __cpp__("Py_DECREF({0})", pyResult); // Чистим результат
 					
-					return haxeResult; // Теперь мы возвращаем реальное значение из Python!
+					// ИСПРАВЛЕНО: Безопасная очистка результата.
+					// Если функция вернула None, True или False, их НЕЛЬЗЯ декрефить, иначе со временем игра упадет!
+					if (pyResult != Py.NONE && pyResult != Py.TRUE && pyResult != Py.FALSE) {
+						untyped __cpp__("Py_DECREF({0})", pyResult);
+					}
+					
+					return haxeResult;
 				} else {
-					// Ошибка внутри самой Python функции
 					untyped __cpp__("PyErr_Print()"); // Выводим ошибку Python в консоль
 				}
 			}
