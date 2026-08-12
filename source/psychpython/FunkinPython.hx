@@ -1602,38 +1602,35 @@ def debugPrint(text = '', color:str = 'WHITE'):
 				safeName = ~/[^a-zA-Z0-9_]/g.replace(safeName, ""); 
 
 				// Creating a Python wrapper that will execute the file's code in an isolated context
-				var isolatedWrapper:String = "
+				var base64Code:String = haxe.crypto.Base64.encode(haxe.io.Bytes.ofString(pyCode));
 
+				var isolatedWrapper:String = "
 import sys
 import gc
+import base64
 gc.disable()
+
 # NO CHEATERS!!!
-# do not remove this pls. it will be better if you leave this code.
-# Standard system modules are blocked to keep players' PCs safe and FNF running at smooth 60+ FPS.
-# Heavy modders: if you know what you are doing, just remove this blockade in the source and compile your own build. Let's cook!
-dangerous_modules = [
-    'os', 'subprocess', 'shutil', 'ctypes', 
-    'importlib', 'nt', 'posix', 'pathlib', 'io'
-]
-
+dangerous_modules = ['os', 'subprocess', 'shutil', 'ctypes', 'importlib', 'nt', 'posix', 'pathlib', 'io']
 for mod in dangerous_modules:
-    if mod in sys.modules:
-        del sys.modules[mod]
-
-for mod in dangerous_modules:
+    if mod in sys.modules: del sys.modules[mod]
     sys.modules[mod] = None
 
 if 'python_mods' not in globals():
     global python_mods
     python_mods = {}
 
-# Creating a private, independent memory area for this script
-# Copying all current global variables and functions that the game has already issued via set() into it
-python_mods['" + safeName + "'] = {k: v for k, v in globals().items() if not k.startswith('__') and k != 'python_mods'}
 
-# Execute the entire file code strictly within its personal dictionary
-exec('''" + pyCode + "''', python_mods['" + safeName + "'])
+if '" + safeName + "' not in python_mods:
+    python_mods['" + safeName + "'] = dict(globals())
+    if 'python_mods' in python_mods['" + safeName + "']:
+        del python_mods['" + safeName + "']['python_mods']
+
+raw_user_code = base64.b64decode('" + base64Code + "').decode('utf-8')
+exec(raw_user_code, python_mods['" + safeName + "'])
 ";
+
+
 
 				
 				this.result = hxpy.PyRun.simpleString((cast isolatedWrapper:cpp.ConstCharStar));
@@ -1711,26 +1708,37 @@ gc.collect()
 	#if (!flash && sys)
 	public var runtimeShaders:Map<String, Array<String>> = new Map<String, Array<String>>();
 	#end
-	private static inline function convertHaxeToPy(value:Dynamic):cpp.RawPointer<hxpy.PyObject> {
-		if (value == null) return Py.NONE;
-		if (Std.isOfType(value, Int)) {
-			var intVal:Int = cast value;
-			return untyped __cpp__("PyLong_FromLong({0})", intVal);
+	@:inline 
+	public static function convertHaxeToPy(value:Dynamic):cpp.RawPointer<hxpy.PyObject> {
+		if (value == null) {
+			untyped __cpp__("Py_INCREF(Py_None)");
+			return Py.NONE;
 		}
-		if (Std.isOfType(value, Float)) {
-			var floatVal:Float = cast value;
-			return untyped __cpp__("PyFloat_FromDouble({0})", floatVal);
+
+		// Type.typeof() работает в разы быстрее на C++, так как не вызывает dynamic_cast
+		switch (Type.typeof(value)) {
+			case TInt:
+				var intVal:Int = cast value;
+				return untyped __cpp__("PyLong_FromLong({0})", intVal);
+				
+			case TFloat:
+				var floatVal:Float = cast value;
+				return untyped __cpp__("PyFloat_FromDouble({0})", floatVal);
+				
+			case TBool:
+				var boolVal:Bool = cast value;
+				var res = boolVal ? Py.TRUE : Py.FALSE;
+				untyped __cpp__("Py_INCREF({0})", res);
+				return res;
+				
+			case TClass(String):
+				var strVal:String = cast value; 
+				return untyped __cpp__("PyUnicode_FromStringAndSize({0}.__s, {0}.length)", strVal);
+				
+			default:
+				untyped __cpp__("Py_INCREF(Py_None)");
+				return Py.NONE;
 		}
-		if (Std.isOfType(value, String)) {
-			var strVal:String = cast value; 
-			// String.length and __s guarantee correct transmission of Cyrillic characters without distortion
-			return untyped __cpp__("PyUnicode_FromStringAndSize({0}.__s, {0}.length)", strVal);
-		}
-		if (Std.isOfType(value, Bool)) {
-			var boolVal:Bool = cast value;
-			return boolVal ? Py.TRUE : Py.FALSE;
-		}
-		return Py.NONE;
 	}
 
 	@:void
@@ -1861,10 +1869,12 @@ if 'python_mods' in globals() and '" + rawSafeName + "' in python_mods:
 		lastCalledScript = this;
 
 		try {
-			// 1. Получаем уникальное имя скрипта
-			var safeNameArray:Array<String> = scriptFile.split("/").pop().split("\\").pop().split(".");
-			var rawSafeName:String = safeNameArray[0];
-			rawSafeName = ~/[^a-zA-Z0-9_]/g.replace(rawSafeName, ""); 
+			// 1. Быстрое извлечение имени скрипта на чистых C++ индексах (без тяжелых RegEx и split)
+			// Это спасает игру от микрофризов на кадрах onUpdate
+			var lastSlash:Int = scriptFile.lastIndexOf("/");
+			if (lastSlash == -1) lastSlash = scriptFile.lastIndexOf("\\");
+			var lastDot:Int = scriptFile.lastIndexOf(".");
+			var rawSafeName:String = (lastDot > lastSlash) ? scriptFile.substring(lastSlash + 1, lastDot) : scriptFile.substring(lastSlash + 1);
 
 			// 2. Достаем модуль/словарь python_mods из __main__ средствами C-API
 			var mainModule:cpp.RawPointer<hxpy.PyObject> = untyped __cpp__("PyImport_AddModule(\"__main__\")");
@@ -1886,11 +1896,18 @@ if 'python_mods' in globals() and '" + rawSafeName + "' in python_mods:
 				
 				// 3. Собираем аргументы в PyTuple (родной кортеж Python)
 				var len:Int = (args != null) ? args.length : 0;
-				var pyArgs:cpp.RawPointer<hxpy.PyObject> = untyped __cpp__("PyTuple_New({0})", len);
-				
-				if (args != null) {
+
+				// ОПТИМИЗАЦИЯ: Изначально ставим указатель в null. 
+				// Если аргументов нет (onBeatHit, onStepHit), пустой PyTuple создаваться НЕ БУДЕТ!
+				var pyArgs:cpp.RawPointer<hxpy.PyObject> = null; 
+
+				if (len > 0) {
+					// Создаем кортеж только тогда, когда реально есть что передавать (например, в opponentNoteHit)
+					pyArgs = untyped __cpp__("PyTuple_New({0})", len);
+					
+					var localArgs = args; // Кэш для оптимизатора Haxe 4.3.2
 					for (i in 0...len) {
-						var pyArg:cpp.RawPointer<hxpy.PyObject> = convertHaxeToPy(args[i]);
+						var pyArg:cpp.RawPointer<hxpy.PyObject> = convertHaxeToPy(localArgs[i]);
 						
 						// ЗАЩИТА СИНГЛТОНОВ: Если конвертер вернул None, True или False, 
 						// нужно сделать INCREF, потому что PyTuple_SetItem заберет эту ссылку себе!
@@ -1904,7 +1921,11 @@ if 'python_mods' in globals() and '" + rawSafeName + "' in python_mods:
 
 				// 4. ВЫЗЫВАЕМ ФУНКЦИЮ НАПРЯМУЮ В ПАМЯТИ
 				var pyResult:cpp.RawPointer<hxpy.PyObject> = untyped __cpp__("PyObject_CallObject({0}, {1})", pyFunc, pyArgs);
-				untyped __cpp__("Py_DECREF({0})", pyArgs); // Чистим кортеж аргументов
+				
+				// Безопасно чистим кортеж аргументов, только если он создавался
+				if (pyArgs != null) {
+					untyped __cpp__("Py_DECREF({0})", pyArgs); 
+				}
 
 				if (pyResult != null) {
 					// 5. Конвертируем результат обратно в Haxe!
