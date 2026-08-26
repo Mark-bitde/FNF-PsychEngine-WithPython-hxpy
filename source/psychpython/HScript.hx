@@ -318,67 +318,104 @@ class HScript extends Iris
     }
     public static function implement(funk:psychpython.FunkinPython) 
     {
-        funk.addLocalCallback("runHaxeCode", function(codeToRun:String, ?varsToBring:Any = null, ?funcToRun:String = null, ?funcArgs:Array<Dynamic> = null):Dynamic {
+        funk.addLocalCallback("hxcode", function(codeToRun:String, ?varsToBring:Any = null, ?funcToRun:String = null, ?funcArgsJson:String = null):Dynamic {
             initHaxeModuleCode(funk, codeToRun, varsToBring);
             if (funk.hscript != null){
-                final retVal:IrisCall = funk.hscript.call(funcToRun, funcArgs);
+				var haxeArgs:Array<Dynamic> = [];
+			    if (funcArgsJson != null) {
+            	try {
+                	haxeArgs = haxe.Json.parse(funcArgsJson);
+            	} catch(e:Dynamic) {
+                	haxeArgs = [];
+            	}
+			}
+                final retVal:IrisCall = funk.hscript.call(funcToRun, haxeArgs);
                 if (retVal != null) return (PyUtils.isPythonSupported(retVal.returnValue)) ? retVal.returnValue : null;
                 else if (funk.hscript.returnValue != null) return funk.hscript.returnValue;
             }
-            return null;});
-            funk.addLocalCallback("runHaxeFunction", function(funcToRun:String, ?funcArgs:Array<Dynamic> = null) {
-                if (funk.hscript != null){
-                    final retVal:IrisCall = funk.hscript.call(funcToRun, funcArgs);
-                    if (retVal != null) return (PyUtils.isPythonSupported(retVal.returnValue)) ? retVal.returnValue : null;
-                } else {
-                    var pos:HScriptInfos = cast {
-                        fileName: funk.scriptName, 
-                        showLine: false
-                    };
-                    Iris.error("runHaxeFunction: HScript has not been initialized yet! Use 'runHaxeCode' to initialize it", pos);
-                }
-                return null;
-            });
-            funk.addLocalCallback("addHaxeLibrary", function(libName:String, ?libPackage:String = '') {
-                var str:String = '';
-                if (libPackage.length > 0) str = libPackage + '.';
-                else if (libName == null) libName = '';
-                var c:Dynamic = Type.resolveClass(str + libName);
-                if (c == null) c = Type.resolveEnum(str + libName);
-                if (funk.hscript == null) initHaxeModule(funk);
-                var pos:HScriptInfos = cast funk.hscript.interp.posInfos();
-                pos.showLine = false;
-                try {
-                    if (c != null) funk.hscript.set(libName, c);
-                } catch (e:IrisError) {
-                    Iris.error(Printer.errorToString(e, false), pos);
-                }
-            });
-        }
-        override function call(funcToRun:String, ?args:Array<Dynamic>):IrisCall {
-            if (funcToRun == null || interp == null) return null;
-            if (!exists(funcToRun)) return null;
+            return null;
+		});
+		hxpy.PyRun.simpleString('
+import json
+
+def runHaxeCode(code_to_run: str, vars_to_bring=None, func_to_run=None, func_args=None):
+    if func_args is None:
+        func_args = []
+
+    json_args = json.dumps(func_args)
+
+    return hxcode(code_to_run, vars_to_bring, func_to_run, json_args)
+');
+
+        funk.addLocalCallback("hxfunction", function(funcToRun:String, ?funcArgsJson:String = null) {
+            if (funk.hscript != null){
+				var haxeArgs:Array<Dynamic> = [];
+			    if (funcArgsJson != null) {
+            		try {
+                		haxeArgs = haxe.Json.parse(funcArgsJson);
+            		} catch(e:Dynamic) {
+                		haxeArgs = [];
+            		}
+				}
+                final retVal:IrisCall = funk.hscript.call(funcToRun, haxeArgs);
+                if (retVal != null) return (PyUtils.isPythonSupported(retVal.returnValue)) ? retVal.returnValue : null;
+            } else {
+                var pos:HScriptInfos = cast {
+                    fileName: funk.scriptName, 
+                    showLine: false
+                };
+                Iris.error("runHaxeFunction: HScript has not been initialized yet! Use 'runHaxeCode' to initialize it", pos);
+            }
+            return null;
+        });
+		hxpy.PyRun.simpleString('
+import json
+def runHaxeFunction(func_to_run, func_args=None):
+	if func_args is None:
+		func_args = []
+	json_args = json.dumps(func_args)
+	return hxfunction(func_to_run, json_args)
+');
+        funk.addLocalCallback("addHaxeLibrary", function(libName:String, ?libPackage:String = '') {
+            var str:String = '';
+            if (libPackage.length > 0) str = libPackage + '.';
+            else if (libName == null) libName = '';
+            var c:Dynamic = Type.resolveClass(str + libName);
+            if (c == null) c = Type.resolveEnum(str + libName);
+            if (funk.hscript == null) initHaxeModule(funk);
+        	var pos:HScriptInfos = cast funk.hscript.interp.posInfos();
+            pos.showLine = false;
             try {
-                var func:Dynamic = interp.variables.get(funcToRun);
-                final ret = Reflect.callMethod(null, func, args ?? []);
-                return {
+                if (c != null) funk.hscript.set(libName, c);
+            } catch (e:IrisError) {
+                Iris.error(Printer.errorToString(e, false), pos);
+            }
+        });
+    }
+    override function call(funcToRun:String, ?args:Array<Dynamic>):IrisCall {
+        if (funcToRun == null || interp == null) return null;
+        if (!exists(funcToRun)) return null;
+        try {
+            var func:Dynamic = interp.variables.get(funcToRun);
+            final ret = Reflect.callMethod(null, func, args ?? []);
+            return {
                     funName: funcToRun, 
                     signature: func, 
                     returnValue: ret
-                };
-            } catch(e:IrisError) {
-                var pos:HScriptInfos = cast this.interp.posInfos();
-                pos.funcName = funcToRun;
-                if (parentPython != null) pos.isPython = true;
-                Iris.error(Printer.errorToString(e, false), pos);
-            } catch (e:ValueException) {
-                var pos:HScriptInfos = cast this.interp.posInfos();
-                pos.funcName = funcToRun;
-                if (parentPython != null) pos.isPython = true;
-                Iris.error('$e', pos);
-            }
-            return null;
+            };
+        } catch(e:IrisError) {
+            var pos:HScriptInfos = cast this.interp.posInfos();
+            pos.funcName = funcToRun;
+            if (parentPython != null) pos.isPython = true;
+            Iris.error(Printer.errorToString(e, false), pos);
+        } catch (e:ValueException) {
+            var pos:HScriptInfos = cast this.interp.posInfos();
+            pos.funcName = funcToRun;
+            if (parentPython != null) pos.isPython = true;
+            Iris.error('$e', pos);
         }
+        return null;
+    }
     override public function destroy(){
         origin = null;
         parentPython = null;

@@ -101,7 +101,8 @@ class FunkinPython {
 		set('pythonDeprecatedWarnings', true);
 		set('version', MainMenuState.psychEngineVersion.trim());
 		set('modFolder', this.modFolder);
-
+		set("pythonVer", Py.VERSION);
+		set("pythonSupportVer", MainMenuState.engineVersion.trim());
 		// Song/Week shit
 		set('curBpm', Conductor.bpm);
 		set('bpm', PlayState.SONG.bpm);
@@ -253,26 +254,114 @@ class FunkinPython {
 			if(ignoreSelf && !exclusions.contains(scriptName)) exclusions.push(scriptName);
 			game.setOnLuas(varName, arg, exclusions);
 		});
-        addLocalCallback("callOnScripts", function(funcName:String, ?args:Array<Dynamic> = null, ?ignoreStops=false, ?ignoreSelf:Bool = true, ?excludeScripts:Array<String> = null, ?excludeValues:Array<Dynamic> = null) {
+        addLocalCallback("finalCallOnScripts", function(funcName:String, ?argsJson:String = null, ?ignoreStops=false, ?ignoreSelf:Bool = true, ?excludeScripts:Array<String> = null, ?excludeValues:Array<Dynamic> = null) {
 			if(excludeScripts == null) excludeScripts = [];
 			if(ignoreSelf && !excludeScripts.contains(scriptName)) excludeScripts.push(scriptName);
-			return game.callOnScripts(funcName, args, ignoreStops, excludeScripts, excludeValues);
+			var scriptsArgs:Array<Dynamic> = [];
+			if (argsJson != null) {
+				
+				try {
+                	scriptsArgs = haxe.Json.parse(argsJson);
+            	} catch(e:Dynamic) {
+            		scriptsArgs = [];
+        		}
+			}
+			return game.callOnScripts(funcName, scriptsArgs, ignoreStops, excludeScripts, excludeValues);
 		});
-		addLocalCallback("callOnLuas", function(funcName:String, ?args:Array<Dynamic> = null, ?ignoreStops=false, ?ignoreSelf:Bool = true, ?excludeScripts:Array<String> = null, ?excludeValues:Array<Dynamic> = null) {
+		PyRun.simpleString('
+import json
+
+def callOnScripts(func_name: str, args=None, ignore_stops=False, ignore_self=True, exclude_scripts=None, exclude_values=None):
+    if exclude_scripts is None: 
+        exclude_scripts = []
+    if args is None: 
+        args = []
+    if exclude_values is None:
+        exclude_values = []
+        
+    return finalCallOnScripts(func_name, json.dumps(args), ignore_stops, ignore_self, exclude_scripts, exclude_values)
+');
+		addLocalCallback("finalCallOnLuas", function(funcName:String, ?argsJson:String = null, ?ignoreStops=false, ?ignoreSelf:Bool = true, ?excludeScripts:Array<String> = null, ?excludeValues:Array<Dynamic> = null) {
 			if(excludeScripts == null) excludeScripts = [];
 			if(ignoreSelf && !excludeScripts.contains(scriptName)) excludeScripts.push(scriptName);
-			return game.callOnLuas(funcName, args, ignoreStops, excludeScripts, excludeValues);
+			var luaArgs:Array<Dynamic> = [];
+			if (argsJson != null) {
+				
+				try {
+                	luaArgs = haxe.Json.parse(argsJson);
+            	} catch(e:Dynamic) {
+            		luaArgs = [];
+        		}
+			}
+			return game.callOnLuas(funcName, luaArgs, ignoreStops, excludeScripts, excludeValues);
 		});
-		addLocalCallback("callOnHScript", function(funcName:String, ?args:Array<Dynamic> = null, ?ignoreStops=false, ?ignoreSelf:Bool = true, ?excludeScripts:Array<String> = null, ?excludeValues:Array<Dynamic> = null) {
+		PyRun.simpleString('
+import json
+
+def callOnLuas(func_name: str, args=None, ignore_stops=False, ignore_self=True, exclude_scripts=None, exclude_values=None):
+    if exclude_scripts is None: 
+        exclude_scripts = []
+    if args is None: 
+        args = []
+    if exclude_values is None:
+        exclude_values = []
+        
+    return finalCallOnLuas(func_name, json.dumps(args), ignore_stops, ignore_self, exclude_scripts, exclude_values)
+');
+		addLocalCallback("finalCallOnHScript", function(funcName:String, ?argsJson = null, ?ignoreStops=false, ?ignoreSelf:Bool = true, ?excludeScripts:Array<String> = null, ?excludeValues:Array<Dynamic> = null) {
 			if(excludeScripts == null) excludeScripts = [];
 			if(ignoreSelf && !excludeScripts.contains(scriptName)) excludeScripts.push(scriptName);
-			return game.callOnHScript(funcName, args, ignoreStops, excludeScripts, excludeValues);
+			var hxArgs:Array<Dynamic> = [];
+			if (argsJson != null) {
+				
+				try {
+                	hxArgs = haxe.Json.parse(argsJson);
+            	} catch(e:Dynamic) {
+            		hxArgs = [];
+        		}
+			}
+			return game.callOnHScript(funcName, hxArgs, ignoreStops, excludeScripts, excludeValues);
 		});
-        addLocalCallback("callOnPythons", function(funcName:String, ?args:Array<Dynamic> = null, ?ignoreStops=false, ?ignoreSelf:Bool = true, ?excludeScripts:Array<String> = null, ?excludeValues:Array<Dynamic> = null) {
+		PyRun.simpleString('
+import json
+
+def callOnHScript(func_name: str, args=None, ignore_stops=False, ignore_self=True, exclude_scripts=None, exclude_values=None):
+    if exclude_scripts is None: 
+        exclude_scripts = []
+    if args is None: 
+        args = []
+    if exclude_values is None:
+        exclude_values = []
+        
+    return finalCallOnHScript(func_name, json.dumps(args), ignore_stops, ignore_self, exclude_scripts, exclude_values)
+');
+        addLocalCallback("finalCallOnPythons", function(funcName:String, ?argsJson:String = null, ?ignoreStops=false, ?ignoreSelf:Bool = true, ?excludeScripts:Array<String> = null, ?excludeValues:Array<Dynamic> = null) {
 			if(excludeScripts == null) excludeScripts = [];
 			if(ignoreSelf && !excludeScripts.contains(scriptName)) excludeScripts.push(scriptName);
-			return game.callOnPythons(funcName, args, ignoreStops, excludeScripts, excludeValues);
+			var pyArgs:Array<Dynamic> = [];
+			if (argsJson != null) {
+				
+				try {
+                	pyArgs = haxe.Json.parse(argsJson);
+            	} catch(e:Dynamic) {
+            		pyArgs = [];
+        		}
+			}
+			return game.callOnPythons(funcName, pyArgs, ignoreStops, excludeScripts, excludeValues);
 		});
+		PyRun.simpleString('
+import json
+
+def callOnPythons(func_name: str, args=None, ignore_stops=False, ignore_self=True, exclude_scripts=None, exclude_values=None):
+    if exclude_scripts is None: 
+        exclude_scripts = []
+    if args is None: 
+        args = []
+    if exclude_values is None:
+        exclude_values = []
+        
+    return finalCallOnPythons(func_name, json.dumps(args), ignore_stops, ignore_self, exclude_scripts, exclude_values)
+');
 		set("callPyScript", function(pyFile:String, funcName:String, ?args:Array<Dynamic> = null){
 			if(args == null) args = [];
 			var pyPath:String = findScript(pyFile);
@@ -1609,25 +1698,39 @@ import sys
 import gc
 import base64
 gc.disable()
+try:
+	# NO CHEATERS!!!
+	dangerous_modules = ['os', 'subprocess', 'shutil', 'ctypes', 'importlib', 'nt', 'posix', 'pathlib', 'io']
+	for mod in dangerous_modules:
+		if mod in sys.modules: del sys.modules[mod]
+		sys.modules[mod] = None
 
-# NO CHEATERS!!!
-dangerous_modules = ['os', 'subprocess', 'shutil', 'ctypes', 'importlib', 'nt', 'posix', 'pathlib', 'io']
-for mod in dangerous_modules:
-    if mod in sys.modules: del sys.modules[mod]
-    sys.modules[mod] = None
-
-if 'python_mods' not in globals():
-    global python_mods
-    python_mods = {}
+	if 'python_mods' not in globals():
+		global python_mods
+		python_mods = {}
 
 
-if '" + safeName + "' not in python_mods:
-    python_mods['" + safeName + "'] = dict(globals())
-    if 'python_mods' in python_mods['" + safeName + "']:
-        del python_mods['" + safeName + "']['python_mods']
+	if '" + safeName + "' not in python_mods:
+		python_mods['" + safeName + "'] = dict(globals())
+		if 'python_mods' in python_mods['" + safeName + "']:
+			del python_mods['" + safeName + "']['python_mods']
 
-raw_user_code = base64.b64decode('" + base64Code + "').decode('utf-8')
-exec(raw_user_code, python_mods['" + safeName + "'])
+	raw_user_code = base64.b64decode('" + base64Code + "').decode('utf-8')
+	exec(raw_user_code, python_mods['" + safeName + "'])
+except Exception as e:
+	# Получаем информацию об исключении и трейсбеке
+	exc_type, exc_value, exc_tb = sys.exc_info()
+	line_num = 0
+	
+	# Проходим до самого глубокого уровня ошибки в коде пользователя
+	if exc_tb is not None:
+		tb = exc_tb
+		while tb.tb_next:
+			tb = tb.tb_next
+		line_num = tb.tb_lineno
+
+	# Выводим ошибку с точным номером строки
+	debugPrint(f'[PYTHON ERROR (Line {line_num})]: {e} (File: " + this.scriptName + ")', 'RED')
 ";
 
 
