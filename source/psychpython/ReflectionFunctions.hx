@@ -204,7 +204,9 @@ class ReflectionFunctions
 			}
 		});
 		
-		funk.addLocalCallback("callMethod", function(funcToRun:String, ?args:Array<Dynamic>) {
+		funk.addLocalCallback("finalCallMethod", function(funcToRun:String, ?argsJson:String) {
+			var args:Array<Dynamic> = [];
+			try { args = haxe.Json.parse(argsJson); } catch (e:Dynamic){}
 			var parent:Dynamic = PlayState.instance;
 			var split:Array<String> = funcToRun.split('.');
 			var varParent:Dynamic = MusicBeatState.getVariables().get(split[0].trim());
@@ -219,12 +221,24 @@ class ReflectionFunctions
 			}
 			return Reflect.callMethod(null, parent, parseInstances(args));
 		});
-
-		funk.addLocalCallback("callMethodFromClass", function(className:String, funcToRun:String, ?args:Array<Dynamic>) {
+		hxpy.PyRun.simpleString("
+import json
+def callMethod(func_to_run, args):
+	return finalCallMethod(func_to_run, json.dumps(args))
+		");
+		funk.addLocalCallback("finalCallMethodFromClass", function(className:String, funcToRun:String, ?argsJson:String) {
+			var args:Array<Dynamic> = [];
+			try{ args = haxe.Json.parse(argsJson); } catch(e:Dynamic) {}
 			return callMethodFromObject(Type.resolveClass(className), funcToRun, parseInstances(args));
 		});
-
-		funk.addLocalCallback("createInstance", function(variableToSave:String, className:String, ?args:Array<Dynamic>) {
+		hxpy.PyRun.simpleString("
+import json
+def callMethodFromObject(class_name, func_to_run, args):
+	return finalCallMethodFromClass(class_name, func_to_run, json.dumps(args))
+		");
+		funk.addLocalCallback("finalCreateInstance", function(variableToSave:String, className:String, ?argsJson:String) {
+			var args:Array<Dynamic> = [];
+			try { args = haxe.Json.parse(argsJson); } catch(e:Dynamic) {}
 			if (!Std.isOfType(args, Array)) args = [];
 			variableToSave = variableToSave.trim().replace('.', '');
 			if(MusicBeatState.getVariables().get(variableToSave) == null)
@@ -249,6 +263,11 @@ class ReflectionFunctions
 			else FunkinPython.pythonTrace('createInstance: Variable $variableToSave already uses and cannot be rewritten!', false, false, FlxColor.RED);
 			return false;
 		});
+		hxpy.PyRun.simpleString("
+import json
+def createInstance(variable_to_save, class_name, args):
+	return finalCreateInstance(variable_to_save, class_name, json.dumps(args))
+		");
 
         funk.addLocalCallback("addInstance", function(objectName:String, ?inFront:Bool = false) {
             var savedObj:Dynamic = MusicBeatState.getVariables().get(objectName);

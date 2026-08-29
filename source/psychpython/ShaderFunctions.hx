@@ -12,7 +12,7 @@ class ShaderFunctions
         pyFunk.addLocalCallback("initPyShader", function(name:String){
             if(!ClientPrefs.data.shaders) return false;
 
-            #if(!flase && MODS_ALLOWED && sys)
+            #if(!flash && MODS_ALLOWED && sys)
             return pyFunk.initPyShader(name);
             #else
             FunkinPython.pythonTrace("initLuaShader: Platform unsupported for Runtime Shaders!", false, false, FlxColor.RED);

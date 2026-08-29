@@ -65,11 +65,12 @@ class FunkinPython {
 	#if HSCRIPT_ALLOWED
 	public var hscript:HScript = null;
 	#end
-	
+	public var lastSlash:Int = 0;
 	public var callbacks:Map<String, Dynamic> = new Map<String, Dynamic>();
 	public static var customFunctions:Map<String, Dynamic> = new Map<String, Dynamic>();
 	public static var lastCalledScript:FunkinPython = null;
-
+	public var lastDot:Int = 0;
+	public var rawSafeName:String = "";
 	public function new(scriptName:String) {
 		// Python(Hython) init
 		
@@ -79,6 +80,11 @@ class FunkinPython {
         if (!Py.isInitialized()) {
             Py.initialize();
         }
+		this.lastSlash = this.scriptFile.lastIndexOf("/");
+		if (this.lastSlash == -1) this.lastSlash = this.scriptFile.lastIndexOf("\\");
+		this.lastDot = scriptFile.lastIndexOf(".");
+		this.rawSafeName = (this.lastDot > this.lastSlash) ? this.scriptFile.substring(lastSlash + 1, lastDot) : this.scriptFile.substring(lastSlash + 1);
+		this.rawSafeName = ~/[^a-zA-Z0-9_]/g.replace(rawSafeName, "");
 		var game:PlayState = PlayState.instance;
         if(game != null && game.pythonArray != null) {
             game.pythonArray.push(this);
@@ -222,7 +228,7 @@ class FunkinPython {
 
 		// build target (windows, mac, linux, etc.)
 		set('buildTarget', PyUtils.getBuildTarget());
-        set("getRunningScripts", function():Array<String> {
+        set("getRunningScriptsArrayString", function():String {
 			var runningScripts:Array<String> = [];
 			
 			
@@ -232,138 +238,277 @@ class FunkinPython {
 				}
                 
 			}
-			return runningScripts;
+			return haxe.Json.stringify(runningScripts);
         });
-        addLocalCallback("setOnScripts", function(varName:String, arg:Dynamic, ?ignoreSelf:Bool = false, ?exclusions:Array<String> = null) {
-            if(exclusions == null) exclusions = [];
+		PyRun.simpleString("
+import json
+def getRunningScripts():
+	return json.loads(getRunningScriptsArrayString())
+		");
+        addLocalCallback("finalSetOnScripts", function(varName:String, arg:Dynamic, ?ignoreSelf:Bool = false, ?exclusionsJson:String = null) {
+			var exclusions:Array<String> = [];
+			if (exclusionsJson != null) {
+				try { exclusions = haxe.Json.parse(exclusionsJson); } catch(e:Dynamic) {}
+			}
             if(ignoreSelf && !exclusions.contains(scriptName)) exclusions.push(scriptName);
             game.setOnScripts(varName, arg, exclusions);
         });
-        addLocalCallback("setOnHScript", function(varName:String, arg:Dynamic, ?ignoreSelf:Bool = false, ?exclusions:Array<String> = null) {
-			if(exclusions == null) exclusions = [];
+		PyRun.simpleString("
+import json
+def setOnScripts(var_name, arg, ignore_self = False, exclusions = None):
+    if isinstance(arg, set):
+        arg = list(arg)
+    
+    if isinstance(arg, (dict, list)):
+        arg_to_send = json.dumps(arg)
+    else:
+        arg_to_send = arg
+	if exclusions is None: exclusions = []
+	finalSetOnScripts(var_name, arg_to_send, ignore_self, json.dumps(exclusions))
+");
+        addLocalCallback("finalSetOnHScript", function(varName:String, arg:Dynamic, ?ignoreSelf:Bool = false, ?exclusionsJson:String = null) {
+			var exclusions:Array<String> = [];
+			if (exclusionsJson != null) {
+				try { exclusions = haxe.Json.parse(exclusionsJson); } catch(e:Dynamic) {}
+			}
 			if(ignoreSelf && !exclusions.contains(scriptName)) exclusions.push(scriptName);
 			game.setOnHScript(varName, arg, exclusions);
 		});
-        addLocalCallback("setOnPythons", function(varName:String, arg:Dynamic, ?ignoreSelf:Bool = false, ?exclusions:Array<String> = null) {
-            if(exclusions == null) exclusions = [];
+		PyRun.simpleString("
+import json
+def setOnHScript(var_name, arg, ignore_self = False, exclusions = None):
+    if isinstance(arg, set):
+        arg = list(arg)
+    
+    if isinstance(arg, (dict, list)):
+        arg_to_send = json.dumps(arg)
+    else:
+        arg_to_send = arg
+	if exclusions is None: exclusions = []
+	finalSetOnHScript(var_name, arg_to_send, ignore_self, json.dumps(exclusions))
+");
+        addLocalCallback("finalSetOnPythons", function(varName:String, arg:Dynamic, ?ignoreSelf:Bool = false, ?exclusionsJson:String = null) {
+            var exclusions:Array<String> = [];
+			if (exclusionsJson != null) {
+				try { exclusions = haxe.Json.parse(exclusionsJson); } catch(e:Dynamic) {}
+			}
             if(ignoreSelf && !exclusions.contains(scriptName)) exclusions.push(scriptName);
             game.setOnPythons(varName, arg, exclusions);
         });
-        addLocalCallback("setOnLuas", function(varName:String, arg:Dynamic, ?ignoreSelf:Bool = false, ?exclusions:Array<String> = null) {
-			if(exclusions == null) exclusions = [];
+		PyRun.simpleString("
+import json
+def setOnPythons(var_name, arg, ignore_self = False, exclusions = None):
+    if isinstance(arg, set):
+        arg = list(arg)
+    
+    if isinstance(arg, (dict, list)):
+        arg_to_send = json.dumps(arg)
+    else:
+        arg_to_send = arg
+	if exclusions is None: exclusions = []
+	finalSetOnPythons(var_name, arg_to_send, ignore_self, json.dumps(exclusions))
+");
+        addLocalCallback("finalSetOnLuas", function(varName:String, arg:Dynamic, ?ignoreSelf:Bool = false, ?exclusionsJson:String = null) {
+			var exclusions:Array<String> = [];
+			if (exclusionsJson != null) {
+				try { exclusions = haxe.Json.parse(exclusionsJson); } catch(e:Dynamic) {}
+			}
 			if(ignoreSelf && !exclusions.contains(scriptName)) exclusions.push(scriptName);
 			game.setOnLuas(varName, arg, exclusions);
 		});
-        addLocalCallback("finalCallOnScripts", function(funcName:String, ?argsJson:String = null, ?ignoreStops=false, ?ignoreSelf:Bool = true, ?excludeScripts:Array<String> = null, ?excludeValues:Array<Dynamic> = null) {
-			if(excludeScripts == null) excludeScripts = [];
-			if(ignoreSelf && !excludeScripts.contains(scriptName)) excludeScripts.push(scriptName);
-			var scriptsArgs:Array<Dynamic> = [];
-			if (argsJson != null) {
-				
-				try {
-                	scriptsArgs = haxe.Json.parse(argsJson);
-            	} catch(e:Dynamic) {
-            		scriptsArgs = [];
-        		}
-			}
-			return game.callOnScripts(funcName, scriptsArgs, ignoreStops, excludeScripts, excludeValues);
-		});
-		PyRun.simpleString('
+		PyRun.simpleString("
+import json
+def setOnLuas(var_name, arg, ignore_self = False, exclusions = None):
+    if isinstance(arg, set):
+        arg = list(arg)
+    
+    if isinstance(arg, (dict, list)):
+        arg_to_send = json.dumps(arg)
+    else:
+        arg_to_send = arg
+	if exclusions is None: exclusions = []
+	finalSetOnLuas(var_name, arg_to_send, ignore_self, json.dumps(exclusions))
+");
+	addLocalCallback("finalCallOnScripts", function(funcName:String, ?argsJson:String = null, ?ignoreStops:Bool = false, ?ignoreSelf:Bool = true, ?excludeScriptsJson:String = null, ?excludeValuesJson:String = null):Dynamic {
+		
+		var excludeScripts:Array<String> = [];
+		if (excludeScriptsJson != null) {
+			try { excludeScripts = haxe.Json.parse(excludeScriptsJson); } catch(e:Dynamic) {}
+		}
+		
+		if (ignoreSelf && !excludeScripts.contains(scriptName)) {
+			excludeScripts.push(scriptName);
+		}
+		
+		var excludeValues:Array<Dynamic> = [];
+		if (excludeValuesJson != null) {
+			try { excludeValues = haxe.Json.parse(excludeValuesJson); } catch(e:Dynamic) {}
+		}
+
+		var scriptsArgs:Array<Dynamic> = [];
+		if (argsJson != null) {
+			try { scriptsArgs = haxe.Json.parse(argsJson); } catch(e:Dynamic) {}
+		}
+		
+		var result = game.callOnScripts(funcName, scriptsArgs, ignoreStops, excludeScripts, excludeValues);
+		
+
+		return result;
+	});
+
+	// Питоновская часть (исправлены отступы и добавлена распаковка ответа)
+	PyRun.simpleString('
 import json
 
 def callOnScripts(func_name: str, args=None, ignore_stops=False, ignore_self=True, exclude_scripts=None, exclude_values=None):
-    if exclude_scripts is None: 
-        exclude_scripts = []
-    if args is None: 
-        args = []
-    if exclude_values is None:
-        exclude_values = []
-        
-    return finalCallOnScripts(func_name, json.dumps(args), ignore_stops, ignore_self, exclude_scripts, exclude_values)
+	if exclude_scripts is None: exclude_scripts = []
+	if args is None: args = []
+	if exclude_values is None: exclude_values = []
+			
+	args = list(args)
+	exclude_scripts = list(exclude_scripts)
+	exclude_values = list(exclude_values)
+			
+	result = finalCallOnScripts(func_name, json.dumps(args), ignore_stops, ignore_self, json.dumps(exclude_scripts), json.dumps(exclude_values))
+		
+		
+	return result
 ');
-		addLocalCallback("finalCallOnLuas", function(funcName:String, ?argsJson:String = null, ?ignoreStops=false, ?ignoreSelf:Bool = true, ?excludeScripts:Array<String> = null, ?excludeValues:Array<Dynamic> = null) {
-			if(excludeScripts == null) excludeScripts = [];
-			if(ignoreSelf && !excludeScripts.contains(scriptName)) excludeScripts.push(scriptName);
-			var luaArgs:Array<Dynamic> = [];
-			if (argsJson != null) {
-				
-				try {
-                	luaArgs = haxe.Json.parse(argsJson);
-            	} catch(e:Dynamic) {
-            		luaArgs = [];
-        		}
+
+		addLocalCallback("finalCallOnLuas", function(funcName:String, ?argsJson:String = null, ?ignoreStops:Bool = false, ?ignoreSelf:Bool = true, ?excludeScriptsJson:String = null, ?excludeValuesJson:String = null):Dynamic {
+		
+			var excludeScripts:Array<String> = [];
+			if (excludeScriptsJson != null) {
+				try { excludeScripts = haxe.Json.parse(excludeScriptsJson); } catch(e:Dynamic) {}
 			}
-			return game.callOnLuas(funcName, luaArgs, ignoreStops, excludeScripts, excludeValues);
+			
+			if (ignoreSelf && !excludeScripts.contains(scriptName)) {
+				excludeScripts.push(scriptName);
+			}
+			
+			var excludeValues:Array<Dynamic> = [];
+			if (excludeValuesJson != null) {
+				try { excludeValues = haxe.Json.parse(excludeValuesJson); } catch(e:Dynamic) {}
+			}
+
+			var scriptsArgs:Array<Dynamic> = [];
+			if (argsJson != null) {
+				try { scriptsArgs = haxe.Json.parse(argsJson); } catch(e:Dynamic) {}
+			}
+			
+			var result = game.callOnLuas(funcName, scriptsArgs, ignoreStops, excludeScripts, excludeValues);
+			
+
+			return result;
 		});
 		PyRun.simpleString('
 import json
 
 def callOnLuas(func_name: str, args=None, ignore_stops=False, ignore_self=True, exclude_scripts=None, exclude_values=None):
-    if exclude_scripts is None: 
-        exclude_scripts = []
-    if args is None: 
-        args = []
-    if exclude_values is None:
-        exclude_values = []
-        
-    return finalCallOnLuas(func_name, json.dumps(args), ignore_stops, ignore_self, exclude_scripts, exclude_values)
+	if exclude_scripts is None: exclude_scripts = []
+	if args is None: args = []
+	if exclude_values is None: exclude_values = []
+			
+	args = list(args)
+	exclude_scripts = list(exclude_scripts)
+	exclude_values = list(exclude_values)
+			
+	result = finalCallOnScripts(func_name, json.dumps(args), ignore_stops, ignore_self, json.dumps(exclude_scripts), json.dumps(exclude_values))
+		
+		
+	return result
 ');
-		addLocalCallback("finalCallOnHScript", function(funcName:String, ?argsJson = null, ?ignoreStops=false, ?ignoreSelf:Bool = true, ?excludeScripts:Array<String> = null, ?excludeValues:Array<Dynamic> = null) {
-			if(excludeScripts == null) excludeScripts = [];
-			if(ignoreSelf && !excludeScripts.contains(scriptName)) excludeScripts.push(scriptName);
-			var hxArgs:Array<Dynamic> = [];
-			if (argsJson != null) {
-				
-				try {
-                	hxArgs = haxe.Json.parse(argsJson);
-            	} catch(e:Dynamic) {
-            		hxArgs = [];
-        		}
+		addLocalCallback("finalCallOnHScript", function(funcName:String, ?argsJson:String = null, ?ignoreStops:Bool = false, ?ignoreSelf:Bool = true, ?excludeScriptsJson:String = null, ?excludeValuesJson:String = null):Dynamic {
+			
+			var excludeScripts:Array<String> = [];
+			if (excludeScriptsJson != null) {
+				try { excludeScripts = haxe.Json.parse(excludeScriptsJson); } catch(e:Dynamic) {}
 			}
-			return game.callOnHScript(funcName, hxArgs, ignoreStops, excludeScripts, excludeValues);
+			
+			if (ignoreSelf && !excludeScripts.contains(scriptName)) {
+				excludeScripts.push(scriptName);
+			}
+			
+			var excludeValues:Array<Dynamic> = [];
+			if (excludeValuesJson != null) {
+				try { excludeValues = haxe.Json.parse(excludeValuesJson); } catch(e:Dynamic) {}
+			}
+
+			var scriptsArgs:Array<Dynamic> = [];
+			if (argsJson != null) {
+				try { scriptsArgs = haxe.Json.parse(argsJson); } catch(e:Dynamic) {}
+			}
+			
+			var result = game.callOnHScript(funcName, scriptsArgs, ignoreStops, excludeScripts, excludeValues);
+			
+
+			return result;
 		});
 		PyRun.simpleString('
 import json
 
 def callOnHScript(func_name: str, args=None, ignore_stops=False, ignore_self=True, exclude_scripts=None, exclude_values=None):
-    if exclude_scripts is None: 
-        exclude_scripts = []
-    if args is None: 
-        args = []
-    if exclude_values is None:
-        exclude_values = []
-        
-    return finalCallOnHScript(func_name, json.dumps(args), ignore_stops, ignore_self, exclude_scripts, exclude_values)
+	if exclude_scripts is None: exclude_scripts = []
+	if args is None: args = []
+	if exclude_values is None: exclude_values = []
+			
+	args = list(args)
+	exclude_scripts = list(exclude_scripts)
+	exclude_values = list(exclude_values)
+			
+	result = finalCallOnScripts(func_name, json.dumps(args), ignore_stops, ignore_self, json.dumps(exclude_scripts), json.dumps(exclude_values))
+		
+		
+	return result
 ');
-        addLocalCallback("finalCallOnPythons", function(funcName:String, ?argsJson:String = null, ?ignoreStops=false, ?ignoreSelf:Bool = true, ?excludeScripts:Array<String> = null, ?excludeValues:Array<Dynamic> = null) {
-			if(excludeScripts == null) excludeScripts = [];
-			if(ignoreSelf && !excludeScripts.contains(scriptName)) excludeScripts.push(scriptName);
-			var pyArgs:Array<Dynamic> = [];
-			if (argsJson != null) {
-				
-				try {
-                	pyArgs = haxe.Json.parse(argsJson);
-            	} catch(e:Dynamic) {
-            		pyArgs = [];
-        		}
+        addLocalCallback("finalCallOnPythons", function(funcName:String, ?argsJson:String = null, ?ignoreStops:Bool = false, ?ignoreSelf:Bool = true, ?excludeScriptsJson:String = null, ?excludeValuesJson:String = null):Dynamic {
+			
+			var excludeScripts:Array<String> = [];
+			if (excludeScriptsJson != null) {
+				try { excludeScripts = haxe.Json.parse(excludeScriptsJson); } catch(e:Dynamic) {}
 			}
-			return game.callOnPythons(funcName, pyArgs, ignoreStops, excludeScripts, excludeValues);
+			
+			if (ignoreSelf && !excludeScripts.contains(scriptName)) {
+				excludeScripts.push(scriptName);
+			}
+			
+			var excludeValues:Array<Dynamic> = [];
+			if (excludeValuesJson != null) {
+				try { excludeValues = haxe.Json.parse(excludeValuesJson); } catch(e:Dynamic) {}
+			}
+
+			var scriptsArgs:Array<Dynamic> = [];
+			if (argsJson != null) {
+				try { scriptsArgs = haxe.Json.parse(argsJson); } catch(e:Dynamic) {}
+			}
+			
+			var result = game.callOnHScript(funcName, scriptsArgs, ignoreStops, excludeScripts, excludeValues);
+			
+
+			return result;
 		});
 		PyRun.simpleString('
 import json
 
 def callOnPythons(func_name: str, args=None, ignore_stops=False, ignore_self=True, exclude_scripts=None, exclude_values=None):
-    if exclude_scripts is None: 
-        exclude_scripts = []
-    if args is None: 
-        args = []
-    if exclude_values is None:
-        exclude_values = []
-        
-    return finalCallOnPythons(func_name, json.dumps(args), ignore_stops, ignore_self, exclude_scripts, exclude_values)
+	if exclude_scripts is None: exclude_scripts = []
+	if args is None: args = []
+	if exclude_values is None: exclude_values = []
+			
+	args = list(args)
+	exclude_scripts = list(exclude_scripts)
+	exclude_values = list(exclude_values)
+			
+	result = finalCallOnScripts(func_name, json.dumps(args), ignore_stops, ignore_self, json.dumps(exclude_scripts), json.dumps(exclude_values))
+		
+		
+	return result
 ');
-		set("callPyScript", function(pyFile:String, funcName:String, ?args:Array<Dynamic> = null){
-			if(args == null) args = [];
+		set("finalCallPyScript", function(pyFile:String, funcName:String, ?argsJson:String = null){
+			var args:Array<Dynamic> = [];
+			if(argsJson != null) {
+				try { args = haxe.Json.parse(argsJson); } catch(e:Dynamic) {}
+			}
 			var pyPath:String = findScript(pyFile);
 			if(pyPath != null)
 				for (pyInstance in game.pythonArray)
@@ -371,13 +516,21 @@ def callOnPythons(func_name: str, args=None, ignore_stops=False, ignore_self=Tru
 						return pyInstance.call(funcName, args);
 			return null;
 		});
-		set("isRunning", function(pyFile:String, funcName:String, ?args:Array<Dynamic> = null){
-			if(args == null) args = [];
-			var pyPath:String = findScript(pyFile);
+		PyRun.simpleString("
+import json
+def callPyScript(py_file, func_name, args = None):
+	if args is None: args = []
+	return finalCallPyScript(py_file, func_name, json.dumps(args))
+		");
+		set("isRunning", function(pyFile:String){
+			var pyPath:String = findScript(scriptFile);
 			if(pyPath != null)
-				for (pyInstance in game.pythonArray)
-					if(pyInstance.scriptName == pyPath)
+			{
+				for (luaInstance in game.pythonArray)
+					if(luaInstance.scriptName == pyPath)
 						return true;
+			}
+
 			#if HSCRIPT_ALLOWED
 			var hscriptPath:String = findScript(scriptFile, '.hx');
 			if(hscriptPath != null)
@@ -564,7 +717,9 @@ def callOnPythons(func_name: str, args=None, ignore_stops=False, ignore_self=Tru
 				PyUtils.loadFrames(spr, image, spriteType);
 			}
 		});
-		set("loadMultipleFrames", function(variable:String, images:Array<String>) {
+		set("finalLoadMultipleFrames", function(variable:String, imagesJson:String) {
+			var images:Array<String> = [];
+			try { images = haxe.Json.parse(imagesJson); } catch(e:Dynamic){}
 			var split:Array<String> = variable.split('.');
 			var spr:FlxSprite = PyUtils.getObjectDirectly(split[0]);
 			if(split.length > 1) {
@@ -576,6 +731,11 @@ def callOnPythons(func_name: str, args=None, ignore_stops=False, ignore_self=Tru
 				spr.frames = Paths.getMultiAtlas(images);
 			}
 		});
+		PyRun.simpleString("
+import json
+def loadMultipleFrames(variable. images: list):
+	finalLoadMultipleFrames(variable, json.dumps(images))
+		");
 		set("getObjectOrder", function(obj:String, ?group:String = null) {
 			var leObj:FlxBasic = PyUtils.getObjectDirectly(obj);
 			if(leObj != null)
@@ -1676,7 +1836,11 @@ def debugPrint(text = '', color:str = 'WHITE'):
 		CustomSubstate.implement(this);
 		ShaderFunctions.implement(this);
 		// DeprecatedFunctions.implement(this);
-
+		for (name => func in customFunctions)
+		{
+			if(func != null)
+				set(name, func);
+		}
 		try {
 			if (FileSystem.exists(scriptName)) 
 			{
@@ -1818,7 +1982,6 @@ gc.collect()
 			return Py.NONE;
 		}
 
-		// Type.typeof() работает в разы быстрее на C++, так как не вызывает dynamic_cast
 		switch (Type.typeof(value)) {
 			case TInt:
 				var intVal:Int = cast value;
@@ -1887,7 +2050,6 @@ gc.collect()
 			
 			var pyId:cpp.RawPointer<hxpy.PyObject> = untyped __cpp__("PyLong_FromLong({0})", id);
 
-			// The stable flat C++ lambda for MSVC remains untouched
 			pyObject = untyped __cpp__("[] (const char* name, PyObject* idObj) -> PyObject* {
 				PyMethodDef* def = new PyMethodDef();
 				#ifdef _MSC_VER
@@ -1912,58 +2074,50 @@ gc.collect()
 
 		if (pyObject != null) {
 			var cVar:cpp.ConstCharStar = cast variable;
-			// 1. First, writing the variable to the global dictionary, as before
+			
 			untyped __cpp__("PyDict_SetItemString({0}, {1}, {2})", mainDict, cVar, pyObject);
+
+			var pyMods:cpp.RawPointer<hxpy.PyObject> = untyped __cpp__("PyDict_GetItemString({0}, \"python_mods\")", mainDict);
+			if (pyMods != null) {
+				var scriptCtxLocal:cpp.RawPointer<hxpy.PyObject> = untyped __cpp__("PyDict_GetItemString({0}, {1}.__s)", pyMods, this.rawSafeName);
+				if (scriptCtxLocal != null) {
+					untyped __cpp__("PyDict_SetItemString({0}, {1}, {2})", scriptCtxLocal, cVar, pyObject);
+				}
+			}
+
 			untyped __cpp__("Py_DECREF({0})", pyObject);
-
-			// 2. SYNCHRONIZATION WITH CONTEXT: Copy this variable to the script's private dictionary
-			// This ensures that the variable will always be up-to-date within an isolated exec()
-			var safeNameArray:Array<String> = scriptFile.split("/").pop().split("\\").pop().split(".");
-			var rawSafeName:String = safeNameArray[0];
-			rawSafeName = ~/[^a-zA-Z0-9_]/g.replace(rawSafeName, "");
-
-			var syncCode:String = "
-if 'python_mods' in globals() and '" + rawSafeName + "' in python_mods:
-    python_mods['" + rawSafeName + "']['" + variable + "'] = globals()['" + variable + "']
-";
-			hxpy.PyRun.simpleString((cast syncCode:cpp.ConstCharStar));
 		}
 	}
+
+
 
 	public static function convertPyToHaxe(pyObj:cpp.RawPointer<hxpy.PyObject>):Dynamic {
 		if (pyObj == null || pyObj == Py.NONE) {
 			return null;
 		}
 
-		// 1. Проверяем на Boolean (в C-API булевы типы — это подвид Long)
 		if (untyped __cpp__("PyBool_Check({0})", pyObj) == 1) {
 			return (pyObj == Py.TRUE);
 		}
 
-		// 2. Проверяем на целое число (Integer / Long)
 		if (untyped __cpp__("PyLong_Check({0})", pyObj) == 1) {
 			var result:Int = untyped __cpp__("(int)PyLong_AsLong({0})", pyObj);
 			return result;
 		}
 
-		// 3. Проверяем на число с плавающей точкой (Float)
 		if (untyped __cpp__("PyFloat_Check({0})", pyObj) == 1) {
 			var result:Float = untyped __cpp__("PyFloat_AsDouble({0})", pyObj);
 			return result;
 		}
 
-		// 4. Проверяем на строку (Unicode в Python 3)
 		if (untyped __cpp__("PyUnicode_Check({0})", pyObj) == 1) {
-			// Вытаскиваем сырую C-строку в UTF-8
 			var cStr:cpp.ConstCharStar = untyped __cpp__("PyUnicode_AsUTF8({0})", pyObj);
 			if (cStr != null) {
-				// Конвертируем C-строку обратно в родной String фреймворка Haxe
 				return Std.string(cStr);
 			}
 		}
 
-		// 5. Если прилетело что-то сложное (список, словарь или кастомный класс Python)
-		// Пока возвращаем null или константу, чтобы не ломать логику движка
+
 		return null;
 	}
 
@@ -1972,48 +2126,32 @@ if 'python_mods' in globals() and '" + rawSafeName + "' in python_mods:
 		lastCalledScript = this;
 
 		try {
-			// 1. Быстрое извлечение имени скрипта на чистых C++ индексах (без тяжелых RegEx и split)
-			// Это спасает игру от микрофризов на кадрах onUpdate
-			var lastSlash:Int = scriptFile.lastIndexOf("/");
-			if (lastSlash == -1) lastSlash = scriptFile.lastIndexOf("\\");
-			var lastDot:Int = scriptFile.lastIndexOf(".");
-			var rawSafeName:String = (lastDot > lastSlash) ? scriptFile.substring(lastSlash + 1, lastDot) : scriptFile.substring(lastSlash + 1);
-
-			// 2. Достаем модуль/словарь python_mods из __main__ средствами C-API
+			
+			
 			var mainModule:cpp.RawPointer<hxpy.PyObject> = untyped __cpp__("PyImport_AddModule(\"__main__\")");
 			var mainDict:cpp.RawPointer<hxpy.PyObject> = PyModule.getDict(mainModule);
 			
-			// Ищем python_mods
 			var pyMods:cpp.RawPointer<hxpy.PyObject> = untyped __cpp__("PyDict_GetItemString({0}, \"python_mods\")", mainDict);
 			if (pyMods == null) return PyUtils.Function_Continue;
 
-			// Достаем контекст нашего скрипта: python_mods['имя_скрипта']
-			var scriptCtxLocal:cpp.RawPointer<hxpy.PyObject> = untyped __cpp__("PyDict_GetItemString({0}, {1}.__s)", pyMods, rawSafeName);
+			var scriptCtxLocal:cpp.RawPointer<hxpy.PyObject> = untyped __cpp__("PyDict_GetItemString({0}, {1}.__s)", pyMods, this.rawSafeName);
 			if (scriptCtxLocal == null) return PyUtils.Function_Continue;
 
-			// Ищем саму функцию внутри контекста скрипта
 			var pyFunc:cpp.RawPointer<hxpy.PyObject> = untyped __cpp__("PyDict_GetItemString({0}, {1}.__s)", scriptCtxLocal, funcName);
 			
-			// Проверяем, существует ли она и можно ли её вызвать (callable)
 			if (pyFunc != null && untyped __cpp__("PyCallable_Check({0})", pyFunc) == 1) {
 				
-				// 3. Собираем аргументы в PyTuple (родной кортеж Python)
 				var len:Int = (args != null) ? args.length : 0;
 
-				// ОПТИМИЗАЦИЯ: Изначально ставим указатель в null. 
-				// Если аргументов нет (onBeatHit, onStepHit), пустой PyTuple создаваться НЕ БУДЕТ!
 				var pyArgs:cpp.RawPointer<hxpy.PyObject> = null; 
 
 				if (len > 0) {
-					// Создаем кортеж только тогда, когда реально есть что передавать (например, в opponentNoteHit)
 					pyArgs = untyped __cpp__("PyTuple_New({0})", len);
 					
 					var localArgs = args; // Кэш для оптимизатора Haxe 4.3.2
 					for (i in 0...len) {
 						var pyArg:cpp.RawPointer<hxpy.PyObject> = convertHaxeToPy(localArgs[i]);
 						
-						// ЗАЩИТА СИНГЛТОНОВ: Если конвертер вернул None, True или False, 
-						// нужно сделать INCREF, потому что PyTuple_SetItem заберет эту ссылку себе!
 						if (pyArg == Py.NONE || pyArg == Py.TRUE || pyArg == Py.FALSE) {
 							untyped __cpp__("Py_INCREF({0})", pyArg);
 						}
@@ -2022,27 +2160,23 @@ if 'python_mods' in globals() and '" + rawSafeName + "' in python_mods:
 					}
 				}
 
-				// 4. ВЫЗЫВАЕМ ФУНКЦИЮ НАПРЯМУЮ В ПАМЯТИ
 				var pyResult:cpp.RawPointer<hxpy.PyObject> = untyped __cpp__("PyObject_CallObject({0}, {1})", pyFunc, pyArgs);
 				
-				// Безопасно чистим кортеж аргументов, только если он создавался
 				if (pyArgs != null) {
 					untyped __cpp__("Py_DECREF({0})", pyArgs); 
 				}
 
 				if (pyResult != null) {
-					// 5. Конвертируем результат обратно в Haxe!
 					var haxeResult:Dynamic = convertPyToHaxe(pyResult); 
 					
-					// ИСПРАВЛЕНО: Безопасная очистка результата.
-					// Если функция вернула None, True или False, их НЕЛЬЗЯ декрефить, иначе со временем игра упадет!
-					if (pyResult != Py.NONE && pyResult != Py.TRUE && pyResult != Py.FALSE) {
-						untyped __cpp__("Py_DECREF({0})", pyResult);
-					}
+					
+					
+					untyped __cpp__("Py_DECREF({0})", pyResult);
+					
 					
 					return haxeResult;
 				} else {
-					untyped __cpp__("PyErr_Print()"); // Выводим ошибку Python в консоль
+					untyped __cpp__("PyErr_Print()"); 
 				}
 			}
 			
