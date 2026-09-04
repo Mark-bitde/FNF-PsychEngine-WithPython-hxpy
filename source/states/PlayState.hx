@@ -3457,7 +3457,7 @@ class PlayState extends MusicBeatState
 	}
 
 	public function callOnPythons(funcToCall:String, args:Array<Dynamic> = null, ignoreStops = false, exclusions:Array<String> = null, excludeValues:Array<Dynamic> = null):Dynamic {
-		// По умолчанию возвращаем Continue, чтобы игра не зависала, если скрипты ничего не заблокировали
+
 		var returnVal:Dynamic = PyUtils.Function_Continue; 
 		
 		#if PYTHON_ALLOWED
@@ -3465,7 +3465,6 @@ class PlayState extends MusicBeatState
 		if (exclusions == null) exclusions = [];
 		if (excludeValues == null) excludeValues = [PyUtils.Function_Continue];
 
-		// Массив для сбора «мертвых» скриптов, которые нужно удалить из памяти
 		var deadScripts:Array<FunkinPython> = [];
 		
 		for (script in pythonArray)
@@ -3481,21 +3480,19 @@ class PlayState extends MusicBeatState
 			if (exclusions.contains(script.scriptName))
 				continue;
 
-			// Вызываем функцию в Python
 			var myValue:Dynamic = script.call(funcToCall, args);
+			if (!script.isFunction)  myValue = script.call(script.toSnakeCase(funcToCall), args);
 			
-			// 🌟 СТРОГОЕ И БЫСТРОЕ СРАВНЕНИЕ БЕЗ CONTAINS:
-			// Если скрипт явно просит остановить игру (StopPython или StopAll)
+			
 			if (!ignoreStops) 
 			{
 				if (myValue == psychpython.PyUtils.Function_StopPython || myValue == psychpython.PyUtils.Function_StopAll) 
 				{
 					returnVal = myValue;
-					break; // Прерываем цикл, выполнение заблокировано
+					break; 
 				}
 			}
 		
-			// Если скрипт вернул какое-то другое кастомное значение, отличное от дефолтного Continue
 			if (myValue != psychpython.PyUtils.Function_Continue && myValue != null)
 			{
 				returnVal = myValue;
@@ -3506,7 +3503,6 @@ class PlayState extends MusicBeatState
 		}
 
 
-		// Корректно очищаем pythonArray от закрытых скриптов
 		if (deadScripts.length > 0)
 			for (script in deadScripts)
 				pythonArray.remove(script);

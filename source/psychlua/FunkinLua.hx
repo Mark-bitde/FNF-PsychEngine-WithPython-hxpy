@@ -301,7 +301,7 @@ class FunkinLua {
 			return MusicBeatState.getVariables().get(varName);
 		});
 		Lua_helper.add_callback(lua, "addPyScript", function(pyFile:String, ?ignoreAlreadyRunning:Bool = false) {
-			var pyPath:String = findScript(pyFile);
+			var pyPath:String = findScript(pyFile, ".py");
 			if(pyPath != null)
 			{
 				if(!ignoreAlreadyRunning)
@@ -315,7 +315,7 @@ class FunkinLua {
 				new psychpython.FunkinPython(pyPath);
 				return;
 			}
-			luaTrace("addLuaScript: Script doesn't exist!", false, false, FlxColor.RED);
+			luaTrace("addPyScript: Script doesn't exist!", false, false, FlxColor.RED);
 		});
 		Lua_helper.add_callback(lua, "addLuaScript", function(luaFile:String, ?ignoreAlreadyRunning:Bool = false) {
 			var luaPath:String = findScript(luaFile);

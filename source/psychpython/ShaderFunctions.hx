@@ -15,7 +15,7 @@ class ShaderFunctions
             #if(!flash && MODS_ALLOWED && sys)
             return pyFunk.initPyShader(name);
             #else
-            FunkinPython.pythonTrace("initLuaShader: Platform unsupported for Runtime Shaders!", false, false, FlxColor.RED);
+            FunkinPython.pythonTrace("initPyShader: Platform unsupported for Runtime Shaders!", false, false, FlxColor.RED);
             #end
             return false;
         });
@@ -71,7 +71,7 @@ class ShaderFunctions
 			return null;
 			#end
         });
-        py.set("getShaderBoolArray", function(obj:String, prop:String) {
+        py.set("finalGetShaderBoolArray", function(obj:String, prop:String) {
 			#if (!flash && MODS_ALLOWED && sys)
 			var shader:FlxRuntimeShader = getShader(obj);
 			if (shader == null)
@@ -79,12 +79,22 @@ class ShaderFunctions
 				FunkinPython.pythonTrace("getShaderBoolArray: Shader is not FlxRuntimeShader!", false, false, FlxColor.RED);
 				return null;
 			}
-			return shader.getBoolArray(prop);
+			return haxe.Json.stringify(shader.getBoolArray(prop));
 			#else
 			FunkinPython.pythonTrace("getShaderBoolArray: Platform unsupported for Runtime Shaders!", false, false, FlxColor.RED);
 			return null;
 			#end
 		});
+		FunkinPython.addPyCode(pyFunk, "
+import json
+def getShaderBoolArray(obj, prop):
+	try:
+		return json.loads(finalGetShaderBoolArray(obj, prop))
+	except Exception: 
+		return None
+get_shader_bool_list = getShaderBoolArray
+get_shader_bool_array = getShaderBoolArray
+");
         py.set("getShaderInt", function(obj:String, prop:String) {
 			#if (!flash && MODS_ALLOWED && sys)
 			var shader:FlxRuntimeShader = getShader(obj);
@@ -99,7 +109,7 @@ class ShaderFunctions
 			return null;
 			#end
 		});
-        py.set("getShaderIntArray", function(obj:String, prop:String) {
+        py.set("finalGetShaderIntArray", function(obj:String, prop:String) {
 			#if (!flash && MODS_ALLOWED && sys)
 			var shader:FlxRuntimeShader = getShader(obj);
 			if (shader == null)
@@ -113,6 +123,17 @@ class ShaderFunctions
 			return null;
 			#end
 		});
+		FunkinPython.addPyCode(pyFunk,"
+import json
+def getShaderIntArray(obj, prop):
+	try:
+		return json.loads(finalGetShaderIntArray(obj, prop))
+	except Exception:
+		return None
+get_shader_int_list = getShaderIntArray
+get_shader_int_array = getShaderIntArray
+
+");
         py.set("getShaderFloat", function(obj:String, prop:String) {
             #if (!flash && MODS_ALLOWED && sys)
 			var shader:FlxRuntimeShader = getShader(obj);
@@ -127,7 +148,7 @@ class ShaderFunctions
 			return null;
 			#end
         });
-        py.set("getShaderFloatArray", function(obj:String, prop:String) {
+        py.set("finalGetShaderFloatArray", function(obj:String, prop:String) {
 			#if (!flash && MODS_ALLOWED && sys)
 			var shader:FlxRuntimeShader = getShader(obj);
 			if (shader == null)
@@ -135,12 +156,22 @@ class ShaderFunctions
 				FunkinPython.pythonTrace("getShaderFloatArray: Shader is not FlxRuntimeShader!", false, false, FlxColor.RED);
 				return null;
 			}
-			return shader.getFloatArray(prop);
+			return haxe.Json.stringify(shader.getFloatArray(prop));
 			#else
 			FunkinPython.pythonTrace("getShaderFloatArray: Platform unsupported for Runtime Shaders!", false, false, FlxColor.RED);
 			return null;
 			#end
 		});
+		FunkinPython.addPyCode(pyFunk, "
+import json
+def getShaderFloatArray(obj, prop):
+	try:
+		return json.loads(finalGetShaderFloatArray(obj, prop))
+	except Exception:
+		return None
+get_shader_float_list = getShaderFloatArray
+get_shader_float_array = getShaderFloatArray
+");
         py.set("setShaderBool", function(obj:String, prop:String, value:Bool) {
 			#if (!flash && MODS_ALLOWED && sys)
 			var shader:FlxRuntimeShader = getShader(obj);
@@ -156,7 +187,8 @@ class ShaderFunctions
 			return false;
 			#end
 		});
-        py.set("setShaderBoolArray", function(obj:String, prop:String, values:Dynamic) {
+        py.set("finalSetShaderBoolArray", function(obj:String, prop:String, valuesJson:String) {
+			var values:Dynamic = haxe.Json.parse(valuesJson);
 			#if (!flash && MODS_ALLOWED && sys)
 			var shader:FlxRuntimeShader = getShader(obj);
 			if(shader == null)
@@ -171,6 +203,13 @@ class ShaderFunctions
 			return false;
 			#end
 		});
+		FunkinPython.addPyCode(pyFunk, "
+import json
+def setShaderBoolArray(obj, prop, values):
+	finalSetShaderBoolArray(obj, prop, json.dumps(values))
+set_shader_bool_list = setShaderBoolArray
+set_shader_bool_array = setShaderBoolArray
+");
         py.set("setShaderInt", function(obj:String, prop:String, value:Int) {
 			#if (!flash && MODS_ALLOWED && sys)
 			var shader:FlxRuntimeShader = getShader(obj);
@@ -186,7 +225,8 @@ class ShaderFunctions
 			return false;
 			#end
 		});
-        py.set("setShaderIntArray", function(obj:String, prop:String, values:Dynamic) {
+        py.set("finalSetShaderIntArray", function(obj:String, prop:String, valuesJson:String) {
+			var values:Dynamic = haxe.Json.parse(valuesJson);
 			#if (!flash && MODS_ALLOWED && sys)
 			var shader:FlxRuntimeShader = getShader(obj);
 			if(shader == null)
@@ -201,6 +241,13 @@ class ShaderFunctions
 			return false;
 			#end
 		});
+		FunkinPython.addPyCode(pyFunk, "
+import json
+def setShaderIntArray(obj, prop, values):
+	finalSetShaderIntArray(obj, prop, json.dumps(values))
+set_shader_int_list = setShaderIntArray
+set_shader_int_array = setShaderIntArray
+");
         py.set("setShaderFloat", function(obj:String, prop:String, value:Float) {
 			#if (!flash && MODS_ALLOWED && sys)
 			var shader:FlxRuntimeShader = getShader(obj);
@@ -216,7 +263,8 @@ class ShaderFunctions
 			return false;
 			#end
 		});
-        py.set("setShaderFloatArray", function(obj:String, prop:String, values:Dynamic) {
+        py.set("finalSetShaderFloatArray", function(obj:String, prop:String, valuesJson:String) {
+			var values:Dynamic = haxe.Json.parse(valuesJson);
 			#if (!flash && MODS_ALLOWED && sys)
 			var shader:FlxRuntimeShader = getShader(obj);
 			if(shader == null)
@@ -232,6 +280,13 @@ class ShaderFunctions
 			return true;
 			#end
 		});
+		FunkinPython.addPyCode(pyFunk, "
+import json
+def setShaderFloatArray(obj, prop, values):
+	finalSetShaderFloatArray(obj, prop, values)
+set_shader_float_array = setShaderFloatArray
+set_shader_float_list = setShaderFloatArray
+");
         py.set("setShaderSampler2D", function(obj:String, prop:String, bitmapdataPath:String) {
 			#if (!flash && MODS_ALLOWED && sys)
 			var shader:FlxRuntimeShader = getShader(obj);
