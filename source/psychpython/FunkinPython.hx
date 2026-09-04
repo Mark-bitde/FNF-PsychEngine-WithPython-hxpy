@@ -1917,15 +1917,12 @@ debug_print = debugPrint
 		try {
 			if (FileSystem.exists(scriptName)) 
 			{
-				// 1. Забираем ЧИСТЫЙ код пользователя в отдельную переменную
 				var pythonScriptCode:String = sys.io.File.getContent(scriptName);
 				pythonScriptCode = StringTools.replace(pythonScriptCode, "\t", "    ");
 				pythonScriptCode = StringTools.replace(pythonScriptCode, "\r\n", "\n");
 
-				// 2. Кодируем пользовательский код отдельно
 				var base64UserCode:String = haxe.crypto.Base64.encode(haxe.io.Bytes.ofString(pythonScriptCode));
 
-				// 3. Дописываем системную onPythonError в pyCode (где уже лежат остальные алиасы)
 				this.pyCode += "
 def onPythonError():
 	error_mes = f'[PYTHON FUNCTION ERROR] In function {function_name}: {type(e).__name__}: {e} (File: " + this.scriptFile + ")'
@@ -1935,14 +1932,11 @@ def onPythonError():
 				this.pyCode = StringTools.replace(this.pyCode, "\t", "    ");
 				this.pyCode = StringTools.replace(this.pyCode, "\r\n", "\n");
 
-				// 4. Кодируем системный код отдельно
 				var base64SystemCode:String = haxe.crypto.Base64.encode(haxe.io.Bytes.ofString(this.pyCode));
 
-				// Генерируем уникальное safeName
 				var safeName:String = scriptFile.split("/").pop().split("\\").pop().split(".")[0];
 				safeName = ~/[^a-zA-Z0-9_]/g.replace(safeName, ""); 
 
-				// 5. НАША БРОНИРОВАННАЯ ПЕСОЧНИЦА С ДВУМЯ EXEC
 				var isolatedWrapper:String = "
 import sys
 import gc
@@ -2002,29 +1996,24 @@ except Exception as e:
 					states.PlayState.instance.addTextToDebug(filename + ": [Python Syntax Error]", FlxColor.RED);
 					trace("[HXPY ERROR] Syntax or Initialization error in: " + scriptName);
 
-					// --- ТОТАЛЬНЫЙ ПЕРЕХВАТ ОШИБОК ИНИЦИАЛИЗАЦИИ ИЗ C-API ---
-					// 1. Создаем указатели для типа, значения и трейсбека ошибки
+					
 					var pType:cpp.RawPointer<hxpy.PyObject> = null;
 					var pValue:cpp.RawPointer<hxpy.PyObject> = null;
 					var pTraceback:cpp.RawPointer<hxpy.PyObject> = null;
 					
-					// 2. Вытаскиваем синтаксическую ошибку из потока Python (очищаем флаг ошибки)
 					untyped __cpp__("PyErr_Fetch(&{0}, &{1}, &{2})", pType, pValue, pTraceback);
 					untyped __cpp__("PyErr_NormalizeException(&{0}, &{1}, &{2})", pType, pValue, pTraceback);
 					trace(pValue);
 					if (pValue != null) {
-						// Переводим Си-объект ошибки в Haxe-строку
 						var errStr:String = convertPyToHaxe(pValue);
-						// Выводим ТОЧНОЕ описание синтаксического бага прямо на экран игры!
 						states.PlayState.instance.addTextToDebug(filename + ": " + errStr, FlxColor.RED);
 						trace("Python PyRun Exception: " + errStr);
 					}
 						
-					// 3. Очищаем ссылки в памяти C++, чтобы избежать утечки памяти
 					if (pType != null) untyped __cpp__("Py_DECREF({0})", pType);
 					if (pValue != null) untyped __cpp__("Py_DECREF({0})", pValue);
 					if (pTraceback != null) untyped __cpp__("Py_DECREF({0})", pTraceback);
-					// -------------------------------------------------------
+					
 				}
 			} 
 			else 
@@ -2251,7 +2240,6 @@ gc.collect()
 	public function toSnakeCase(str:String):String {
 		if (snakeCaseCache.exists(str)) return snakeCaseCache.get(str);
 
-		// Если вызывается впервые — переводим через EReg
 		var ereg1:EReg = ~/([A-Z]+)([A-Z][a-z])/g;
 		var res = ereg1.replace(str, "$1_$2");
 		
@@ -2260,7 +2248,6 @@ gc.collect()
 		
 		var finalResult = res.toLowerCase();
 		
-		// Запоминаем в кэш перед возвратом
 		snakeCaseCache.set(str, finalResult);
 		return finalResult;
 	}
@@ -2292,7 +2279,7 @@ gc.collect()
 				if (len > 0) {
 					pyArgs = untyped __cpp__("PyTuple_New({0})", len);
 					
-					var localArgs = args; // Кэш для оптимизатора Haxe 4.3.2
+					var localArgs = args;
 					for (i in 0...len) {
 						var pyArg:cpp.RawPointer<hxpy.PyObject> = convertHaxeToPy(localArgs[i]);
 						
@@ -2322,28 +2309,22 @@ gc.collect()
 				} else {
 
 					
-						// 1. Создаем указатели для типа, значения и трейсбека ошибки
 					var pType:cpp.RawPointer<hxpy.PyObject> = null;
 					var pValue:cpp.RawPointer<hxpy.PyObject> = null;
 					var pTraceback:cpp.RawPointer<hxpy.PyObject> = null;
 					
-						// 2. Забираем ошибку из потока Python (это очистит флаг ошибки, игра не вылетит)
 					untyped __cpp__("PyErr_Fetch(&{0}, &{1}, &{2})", pType, pValue, pTraceback);
 					untyped __cpp__("PyErr_NormalizeException(&{0}, &{1}, &{2})", pType, pValue, pTraceback);
 					trace(pValue);
 					if (pValue != null) {
-						// pValue — это и есть тот самый объект "e" (BaseException)
-						// 3. Записываем этот объект напрямую в словарь вашего Python-мода как переменную "e"
 						untyped __cpp__("PyDict_SetItemString({0}, \"e\", {1})", scriptCtxLocal, pValue);
 							
-							// 4. Теперь мы можем безопасно вызвать в Python функцию обработки ошибок, если она есть
 						var pyErrorHandler:cpp.RawPointer<hxpy.PyObject> = untyped __cpp__("PyDict_GetItemString({0}, \"onPythonError\")", scriptCtxLocal);
 						if (pyErrorHandler != null && untyped __cpp__("PyCallable_Check({0})", pyErrorHandler) == 1) {
 							untyped __cpp__("PyObject_CallObject({0}, NULL)", pyErrorHandler);
 						}
 					}
 						
-					// Обязательно очищаем ссылки в C-API, чтобы избежать утечки памяти
 					if (pType != null) untyped __cpp__("Py_DECREF({0})", pType);
 					if (pValue != null) untyped __cpp__("Py_DECREF({0})", pValue);
 					if (pTraceback != null) untyped __cpp__("Py_DECREF({0})", pTraceback);
