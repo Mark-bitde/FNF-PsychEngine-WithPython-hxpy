@@ -17,24 +17,42 @@ class ReflectionFunctions
 
 	public static function implement(funk:psychpython.FunkinPython)
 	{
-		funk.addLocalCallback("getProperty", function(variable:String, ?allowMaps:Bool = false) {
+		funk.addLocalCallback("finalGetProperty", function(variable:String, ?allowMaps:Bool = false) {
 			var split:Array<String> = variable.split('.');
 			if(split.length > 1)
-				return PyUtils.getVarInArray(PyUtils.getPropertyLoop(split, true, allowMaps), split[split.length-1], allowMaps);
-			return PyUtils.getVarInArray(PyUtils.getTargetInstance(), variable, allowMaps);
+				return haxe.Json.stringify(PyUtils.getVarInArray(PyUtils.getPropertyLoop(split, true, allowMaps), split[split.length-1], allowMaps));
+			return haxe.Json.stringify(PyUtils.getVarInArray(PyUtils.getTargetInstance(), variable, allowMaps));
 		});
-
-		funk.addLocalCallback("setProperty", function(variable:String, value:Dynamic, ?allowMaps:Bool = false, ?allowInstances:Bool = false) {
+		FunkinPython.addPyCode(funk, "
+import json
+def getProperty(variable: str, allow_maps: bool = False):
+	return json.loads(finalGetProperty(variable, allow_maps))
+");
+		funk.addLocalCallback("finalSetProperty", function(variable:String, valueJson:String, ?allowMaps:Bool = false, ?allowInstances:Bool = false) {
+			
 			var split:Array<String> = variable.split('.');
+			var value:Dynamic = null;
+			try { value = haxe.Json.parse(valueJson); } catch(e:Dynamic) { /*value = valueJson;*/ trace("Error while parsing: " + e); }
 			if(split.length > 1) {
 				PyUtils.setVarInArray(PyUtils.getPropertyLoop(split, true, allowMaps), split[split.length-1], allowInstances ? parseInstances(value) : value, allowMaps);
-				return value;
+				return valueJson;
 			}
 			PyUtils.setVarInArray(PyUtils.getTargetInstance(), variable, allowInstances ? parseInstances(value) : value, allowMaps);
-			return value;
+			return valueJson;
 		});
+		FunkinPython.addPyCode(funk, "
+import json
+def setProperty(variable: str, value, allow_maps: bool = False, allow_instances: bool = False):
+	
+	json_val = f'\\\"{value}\\\"'
+	
+	finalSetProperty(variable, json_val, allow_maps, allow_instances)
+	#the best solution ever
+	return value
+	
+");
 
-		funk.addLocalCallback("getPropertyFromClass", function(classVar:String, variable:String, ?allowMaps:Bool = false) {
+		funk.addLocalCallback("finalGetPropertyFromClass", function(classVar:String, variable:String, ?allowMaps:Bool = false) {
 			var myClass:Dynamic = Type.resolveClass(classVar);
 			if(myClass == null)
 			{
@@ -48,12 +66,16 @@ class ReflectionFunctions
 				for (i in 1...split.length-1)
 					obj = PyUtils.getVarInArray(obj, split[i], allowMaps);
 
-				return PyUtils.getVarInArray(obj, split[split.length-1], allowMaps);
+				return haxe.Json.stringify(PyUtils.getVarInArray(obj, split[split.length-1], allowMaps));
 			}
-			return PyUtils.getVarInArray(myClass, variable, allowMaps);
+			return haxe.Json.stringify(PyUtils.getVarInArray(myClass, variable, allowMaps));
 		});
-
-		funk.addLocalCallback("setPropertyFromClass", function(classVar:String, variable:String, value:Dynamic, ?allowMaps:Bool = false, ?allowInstances:Bool = false) {
+		FunkinPython.addPyCode(funk, "
+import json
+def getPropertyFromClass(class_var: str, variable: str, allow_maps: bool = False):
+	return json.loads(finalGetPropertyFromClass(class_var, variable, allow_maps))
+");
+		funk.addLocalCallback("finalSetPropertyFromClass", function(classVar:String, variable:String, valueJson:String, ?allowMaps:Bool = false, ?allowInstances:Bool = false) {
 			var myClass:Dynamic = Type.resolveClass(classVar);
 			if(myClass == null)
 			{
@@ -62,19 +84,28 @@ class ReflectionFunctions
 			}
 
 			var split:Array<String> = variable.split('.');
+			var value:Dynamic= null;
+			try { value = haxe.Json.parse(valueJson); } catch(e:Dynamic) {}
 			if(split.length > 1) {
 				var obj:Dynamic = PyUtils.getVarInArray(myClass, split[0], allowMaps);
 				for (i in 1...split.length-1)
 					obj = PyUtils.getVarInArray(obj, split[i], allowMaps);
 
 				PyUtils.setVarInArray(obj, split[split.length-1], allowInstances ? parseInstances(value) : value, allowMaps);
-				return value;
+				return haxe.Json.stringify(value);
 			}
 			PyUtils.setVarInArray(myClass, variable, allowInstances ? parseInstances(value) : value, allowMaps);
-			return value;
+			return haxe.Json.stringify(value);
 		});
-
-		funk.addLocalCallback("getPropertyFromGroup", function(group:String, index:Int, variable:Dynamic, ?allowMaps:Bool = false) {
+		FunkinPython.addPyCode(funk, "
+import json
+def setPropertyFromClass(class_var: str, variable: str, value, allow_maps: bool = False, allow_instances: bool = False):
+	finalSetPropertyFromClass(class_var, variable, f'\\\"{value}\\\"', allow_maps, allow_instances)
+	return value
+");
+		funk.addLocalCallback("finalGetPropertyFromGroup", function(group:String, index:Int, variableJson:String, ?allowMaps:Bool = false) {
+			var variable:Dynamic = null;
+			try { variable = haxe.Json.parse(variableJson); } catch(e:Dynamic) {}
 			var split:Array<String> = group.split('.');
 			var realObject:Dynamic = null;
 			if(split.length > 1)
@@ -95,22 +126,30 @@ class ReflectionFunctions
 								result = leArray[variable];
 							else
 								result = PyUtils.getGroupStuff(leArray, variable, allowMaps);
-							return result;
+							return haxe.Json.stringify(result);
 						}
 						FunkinPython.pythonTrace('getPropertyFromGroup: Element $index does not exist instde array or group $group!', false, false, FlxColor.RED);
 
 					default:
 						var result:Dynamic = PyUtils.getGroupStuff(realObject.members[index], variable, allowMaps);
-						return result;
+						return haxe.Json.stringify(result);
 				}
 			}
 			FunkinPython.pythonTrace('getPropertyFromGroup: Group or array $group not found!', false, false, FlxColor.RED);
 			return null;
 		});
-
-		funk.addLocalCallback("setPropertyFromGroup", function(group:String, index:Int, variable:Dynamic, value:Dynamic, ?allowMaps:Bool = false, ?allowInstances:Bool = false) {
+		FunkinPython.addPyCode(funk, "
+import json
+def getPropertyFromGroup(group: str, index: int, variable, allow_maps: bool = False):
+	return json.loads(finalGetPropertyFromGroup(group, index, json.dumps(variable), allow_maps))
+");
+		funk.addLocalCallback("finalSetPropertyFromGroup", function(group:String, index:Int, variableJson:String, valueJson:String, ?allowMaps:Bool = false, ?allowInstances:Bool = false) {
 			var split:Array<String> = group.split('.');
 			var realObject:Dynamic = null;
+			var variable:Dynamic = null;
+			var value:Dynamic = null;
+			try { variable = haxe.Json.parse(variableJson); } catch(e:Dynamic) {}
+			try { value = haxe.Json.parse(valueJson); } catch(e:Dynamic) {}
 			if(split.length > 1)
 				realObject = PyUtils.getPropertyLoop(split, false, allowMaps);
 			else
@@ -127,7 +166,7 @@ class ReflectionFunctions
 							if(Type.typeof(variable) == ValueType.TInt)
 							{
 								leArray[variable] = allowInstances ? parseInstances(value) : value;
-								return value;
+								return haxe.Json.stringify(value);
 							}
 							PyUtils.setGroupStuff(leArray, variable, allowInstances ? parseInstances(value) : value, allowMaps);
 						}
@@ -137,9 +176,14 @@ class ReflectionFunctions
 				}
 			}
 			else FunkinPython.pythonTrace('setPropertyFromGroup: Group or array $group not found!', false, false, FlxColor.RED);
-			return value;
+			return haxe.Json.stringify(value);
 		});
-
+		FunkinPython.addPyCode(funk, "
+import json
+def setPropertyFromGroup(group: str, index: int, variable, value, allow_maps: bool = False, allow_instances: bool = False):
+	finalSetPropertyFromGroup(group, index, f'\\\"{value}\\\"', json.dumps(value, ensure_ascii=False), allow_maps, allow_instances)
+	return value
+");
 		funk.addLocalCallback("addToGroup", function(group:String, tag:String, ?index:Int = -1) {
 			var obj:FlxSprite = PyUtils.getObjectDirectly(tag);
 			if(obj == null || obj.destroy == null)
@@ -221,21 +265,21 @@ class ReflectionFunctions
 			}
 			return Reflect.callMethod(null, parent, parseInstances(args));
 		});
-		hxpy.PyRun.simpleString("
+		FunkinPython.addPyCode(funk, "
 import json
 def callMethod(func_to_run, args):
-	return finalCallMethod(func_to_run, json.dumps(args))
-		");
+	return finalCallMethod(func_to_run, json.dumps(args, ensure_ascii=False))
+");
 		funk.addLocalCallback("finalCallMethodFromClass", function(className:String, funcToRun:String, ?argsJson:String) {
 			var args:Array<Dynamic> = [];
 			try{ args = haxe.Json.parse(argsJson); } catch(e:Dynamic) {}
 			return callMethodFromObject(Type.resolveClass(className), funcToRun, parseInstances(args));
 		});
-		hxpy.PyRun.simpleString("
+		FunkinPython.addPyCode(funk, "
 import json
 def callMethodFromObject(class_name, func_to_run, args):
 	return finalCallMethodFromClass(class_name, func_to_run, json.dumps(args))
-		");
+");
 		funk.addLocalCallback("finalCreateInstance", function(variableToSave:String, className:String, ?argsJson:String) {
 			var args:Array<Dynamic> = [];
 			try { args = haxe.Json.parse(argsJson); } catch(e:Dynamic) {}
@@ -263,11 +307,11 @@ def callMethodFromObject(class_name, func_to_run, args):
 			else FunkinPython.pythonTrace('createInstance: Variable $variableToSave already uses and cannot be rewritten!', false, false, FlxColor.RED);
 			return false;
 		});
-		hxpy.PyRun.simpleString("
+		FunkinPython.addPyCode(funk, "
 import json
 def createInstance(variable_to_save, class_name, args):
 	return finalCreateInstance(variable_to_save, class_name, json.dumps(args))
-		");
+");
 
         funk.addLocalCallback("addInstance", function(objectName:String, ?inFront:Bool = false) {
             var savedObj:Dynamic = MusicBeatState.getVariables().get(objectName);

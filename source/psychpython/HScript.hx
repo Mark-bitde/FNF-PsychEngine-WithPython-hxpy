@@ -335,7 +335,7 @@ class HScript extends Iris
             }
             return null;
 		});
-		hxpy.PyRun.simpleString('
+		FunkinPython.addPyCode(funk, '
 import json
 
 def runHaxeCode(code_to_run: str, vars_to_bring=None, func_to_run=None, func_args=None):
@@ -345,6 +345,7 @@ def runHaxeCode(code_to_run: str, vars_to_bring=None, func_to_run=None, func_arg
     json_args = json.dumps(func_args)
 
     return hxcode(code_to_run, vars_to_bring, func_to_run, json_args)
+run_haxe_code = runHaxeCode
 ');
 
         funk.addLocalCallback("hxfunction", function(funcToRun:String, ?funcArgsJson:String = null) {
@@ -368,13 +369,14 @@ def runHaxeCode(code_to_run: str, vars_to_bring=None, func_to_run=None, func_arg
             }
             return null;
         });
-		hxpy.PyRun.simpleString('
+		FunkinPython.addPyCode(funk, '
 import json
 def runHaxeFunction(func_to_run, func_args=None):
 	if func_args is None:
 		func_args = []
 	json_args = json.dumps(func_args)
 	return hxfunction(func_to_run, json_args)
+run_haxe_function = runHaxeFunction
 ');
         funk.addLocalCallback("addHaxeLibrary", function(libName:String, ?libPackage:String = '') {
             var str:String = '';

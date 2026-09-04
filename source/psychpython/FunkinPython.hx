@@ -65,14 +65,18 @@ class FunkinPython {
 	#if HSCRIPT_ALLOWED
 	public var hscript:HScript = null;
 	#end
+
+	public var isFunction:Bool = false;
 	public var lastSlash:Int = 0;
 	public var callbacks:Map<String, Dynamic> = new Map<String, Dynamic>();
 	public static var customFunctions:Map<String, Dynamic> = new Map<String, Dynamic>();
 	public static var lastCalledScript:FunkinPython = null;
 	public var lastDot:Int = 0;
 	public var rawSafeName:String = "";
+	public var pyCode:String = "";
+	public var snakeCaseCache:Map<String, String> = new Map<String, String>();
 	public function new(scriptName:String) {
-		// Python(Hython) init
+		
 		
 		
 		this.scriptName = scriptName.trim();
@@ -80,6 +84,7 @@ class FunkinPython {
         if (!Py.isInitialized()) {
             Py.initialize();
         }
+		// trace("Python initialized: " + Py.isInitialized());
 		this.lastSlash = this.scriptFile.lastIndexOf("/");
 		if (this.lastSlash == -1) this.lastSlash = this.scriptFile.lastIndexOf("\\");
 		this.lastDot = scriptFile.lastIndexOf(".");
@@ -98,6 +103,7 @@ class FunkinPython {
 		// Python shit 
 		
 		set('Function_StopLua', psychlua.LuaUtils.Function_StopLua);
+		set("тест", 5);
 		set('Function_StopPython', PyUtils.Function_StopPython);
 		set('Function_StopHScript', PyUtils.Function_StopHScript);
 		set('Function_StopAll', PyUtils.Function_StopAll);
@@ -138,7 +144,7 @@ class FunkinPython {
 		// Screen stuff
 		set('screenWidth', FlxG.width);
 		set('screenHeight', FlxG.height);
-
+		
         // PlayState-only variables
 		if(game != null)
 		@:privateAccess
@@ -186,6 +192,7 @@ class FunkinPython {
 				set('defaultPlayerStrumY' + i, 0);
 				set('defaultOpponentStrumX' + i, 0);
 				set('defaultOpponentStrumY' + i, 0);
+				
 			}
 	
 			// Default character data
@@ -199,6 +206,8 @@ class FunkinPython {
 			set('boyfriendName', game.boyfriend != null ? game.boyfriend.curCharacter : PlayState.SONG.player1);
 			set('dadName', game.dad != null ? game.dad.curCharacter : PlayState.SONG.player2);
 			set('gfName', game.gf != null ? game.gf.curCharacter : PlayState.SONG.gfVersion);
+						
+
 		}
 
 		// Other settings
@@ -228,6 +237,7 @@ class FunkinPython {
 
 		// build target (windows, mac, linux, etc.)
 		set('buildTarget', PyUtils.getBuildTarget());
+		
         set("getRunningScriptsArrayString", function():String {
 			var runningScripts:Array<String> = [];
 			
@@ -240,11 +250,12 @@ class FunkinPython {
 			}
 			return haxe.Json.stringify(runningScripts);
         });
-		PyRun.simpleString("
+		this.pyCode += "
 import json
 def getRunningScripts():
 	return json.loads(getRunningScriptsArrayString())
-		");
+get_running_scripts = getRunningScripts
+";
         addLocalCallback("finalSetOnScripts", function(varName:String, arg:Dynamic, ?ignoreSelf:Bool = false, ?exclusionsJson:String = null) {
 			var exclusions:Array<String> = [];
 			if (exclusionsJson != null) {
@@ -253,19 +264,24 @@ def getRunningScripts():
             if(ignoreSelf && !exclusions.contains(scriptName)) exclusions.push(scriptName);
             game.setOnScripts(varName, arg, exclusions);
         });
-		PyRun.simpleString("
+		this.pyCode += "
 import json
 def setOnScripts(var_name, arg, ignore_self = False, exclusions = None):
-    if isinstance(arg, set):
-        arg = list(arg)
-    
-    if isinstance(arg, (dict, list)):
-        arg_to_send = json.dumps(arg)
-    else:
-        arg_to_send = arg
-	if exclusions is None: exclusions = []
-	finalSetOnScripts(var_name, arg_to_send, ignore_self, json.dumps(exclusions))
-");
+	arg_to_send = None
+	try:
+		if isinstance(arg, set):
+			arg = list(arg)
+		
+		if isinstance(arg, (dict, list)):
+			arg_to_send = json.dumps(arg)
+		else:
+			arg_to_send = arg
+		if exclusions is None: exclusions = []
+		finalSetOnScripts(var_name, arg_to_send, ignore_self, json.dumps(exclusions))
+	except Exception as e:
+		debugPrint(f'[PYTHON] Could not set variable {var_name} on scripts(which are not excluded). The argument is: {arg_to_send}', 'RED')
+set_on_scripts = setOnScripts
+";
         addLocalCallback("finalSetOnHScript", function(varName:String, arg:Dynamic, ?ignoreSelf:Bool = false, ?exclusionsJson:String = null) {
 			var exclusions:Array<String> = [];
 			if (exclusionsJson != null) {
@@ -274,19 +290,24 @@ def setOnScripts(var_name, arg, ignore_self = False, exclusions = None):
 			if(ignoreSelf && !exclusions.contains(scriptName)) exclusions.push(scriptName);
 			game.setOnHScript(varName, arg, exclusions);
 		});
-		PyRun.simpleString("
+		this.pyCode += "
 import json
 def setOnHScript(var_name, arg, ignore_self = False, exclusions = None):
-    if isinstance(arg, set):
-        arg = list(arg)
-    
-    if isinstance(arg, (dict, list)):
-        arg_to_send = json.dumps(arg)
-    else:
-        arg_to_send = arg
-	if exclusions is None: exclusions = []
-	finalSetOnHScript(var_name, arg_to_send, ignore_self, json.dumps(exclusions))
-");
+	arg_to_send = None
+	try:
+		if isinstance(arg, set):
+			arg = list(arg)
+		
+		if isinstance(arg, (dict, list)):
+			arg_to_send = json.dumps(arg)
+		else:
+			arg_to_send = arg
+		if exclusions is None: exclusions = []
+		finalSetOnHScript(var_name, arg_to_send, ignore_self, json.dumps(exclusions))
+	except Exception as e:
+		debugPrint(f'[PYTHON] Could not set variable {var_name} on HScripts. The argument is: {arg_to_send}', 'RED')
+set_on_hscript = setOnHScript
+";
         addLocalCallback("finalSetOnPythons", function(varName:String, arg:Dynamic, ?ignoreSelf:Bool = false, ?exclusionsJson:String = null) {
             var exclusions:Array<String> = [];
 			if (exclusionsJson != null) {
@@ -295,19 +316,25 @@ def setOnHScript(var_name, arg, ignore_self = False, exclusions = None):
             if(ignoreSelf && !exclusions.contains(scriptName)) exclusions.push(scriptName);
             game.setOnPythons(varName, arg, exclusions);
         });
-		PyRun.simpleString("
+		this.pyCode += "
 import json
 def setOnPythons(var_name, arg, ignore_self = False, exclusions = None):
-    if isinstance(arg, set):
-        arg = list(arg)
-    
-    if isinstance(arg, (dict, list)):
-        arg_to_send = json.dumps(arg)
-    else:
-        arg_to_send = arg
-	if exclusions is None: exclusions = []
-	finalSetOnPythons(var_name, arg_to_send, ignore_self, json.dumps(exclusions))
-");
+	arg_to_send = None
+	try:
+		
+		if isinstance(arg, set):
+			arg = list(arg)
+		
+		if isinstance(arg, (dict, list)):
+			arg_to_send = json.dumps(arg)
+		else:
+			arg_to_send = arg
+		if exclusions is None: exclusions = []
+		finalSetOnPythons(var_name, arg_to_send, ignore_self, json.dumps(exclusions))
+	except Exception as e:
+		debugPrint(f'[PYTHON] Could not set variable {var_name} on Python scripts. The argument is: {arg_to_send}', 'RED')
+set_on_pythons = setOnPythons
+";
         addLocalCallback("finalSetOnLuas", function(varName:String, arg:Dynamic, ?ignoreSelf:Bool = false, ?exclusionsJson:String = null) {
 			var exclusions:Array<String> = [];
 			if (exclusionsJson != null) {
@@ -316,19 +343,24 @@ def setOnPythons(var_name, arg, ignore_self = False, exclusions = None):
 			if(ignoreSelf && !exclusions.contains(scriptName)) exclusions.push(scriptName);
 			game.setOnLuas(varName, arg, exclusions);
 		});
-		PyRun.simpleString("
+		this.pyCode += "
 import json
 def setOnLuas(var_name, arg, ignore_self = False, exclusions = None):
-    if isinstance(arg, set):
-        arg = list(arg)
-    
-    if isinstance(arg, (dict, list)):
-        arg_to_send = json.dumps(arg)
-    else:
-        arg_to_send = arg
-	if exclusions is None: exclusions = []
-	finalSetOnLuas(var_name, arg_to_send, ignore_self, json.dumps(exclusions))
-");
+	arg_to_send = None
+	try:
+		if isinstance(arg, set):
+			arg = list(arg)
+		
+		if isinstance(arg, (dict, list)):
+			arg_to_send = json.dumps(arg)
+		else:
+			arg_to_send = arg
+		if exclusions is None: exclusions = []
+		finalSetOnLuas(var_name, arg_to_send, ignore_self, json.dumps(exclusions))
+	except Exception as e:
+		debugPrint(f'[PYTHON] Could not set variable {var_name} on Lua scripts. The argument is: {arg_to_send}', 'RED')
+set_on_luas = setOnLuas
+";
 	addLocalCallback("finalCallOnScripts", function(funcName:String, ?argsJson:String = null, ?ignoreStops:Bool = false, ?ignoreSelf:Bool = true, ?excludeScriptsJson:String = null, ?excludeValuesJson:String = null):Dynamic {
 		
 		var excludeScripts:Array<String> = [];
@@ -356,8 +388,7 @@ def setOnLuas(var_name, arg, ignore_self = False, exclusions = None):
 		return result;
 	});
 
-	// Питоновская часть (исправлены отступы и добавлена распаковка ответа)
-	PyRun.simpleString('
+	this.pyCode += '
 import json
 
 def callOnScripts(func_name: str, args=None, ignore_stops=False, ignore_self=True, exclude_scripts=None, exclude_values=None):
@@ -373,7 +404,8 @@ def callOnScripts(func_name: str, args=None, ignore_stops=False, ignore_self=Tru
 		
 		
 	return result
-');
+call_on_scripts = callOnScripts
+';
 
 		addLocalCallback("finalCallOnLuas", function(funcName:String, ?argsJson:String = null, ?ignoreStops:Bool = false, ?ignoreSelf:Bool = true, ?excludeScriptsJson:String = null, ?excludeValuesJson:String = null):Dynamic {
 		
@@ -401,7 +433,7 @@ def callOnScripts(func_name: str, args=None, ignore_stops=False, ignore_self=Tru
 
 			return result;
 		});
-		PyRun.simpleString('
+		this.pyCode += '
 import json
 
 def callOnLuas(func_name: str, args=None, ignore_stops=False, ignore_self=True, exclude_scripts=None, exclude_values=None):
@@ -417,7 +449,8 @@ def callOnLuas(func_name: str, args=None, ignore_stops=False, ignore_self=True, 
 		
 		
 	return result
-');
+call_on_luas = callOnLuas
+';
 		addLocalCallback("finalCallOnHScript", function(funcName:String, ?argsJson:String = null, ?ignoreStops:Bool = false, ?ignoreSelf:Bool = true, ?excludeScriptsJson:String = null, ?excludeValuesJson:String = null):Dynamic {
 			
 			var excludeScripts:Array<String> = [];
@@ -444,7 +477,7 @@ def callOnLuas(func_name: str, args=None, ignore_stops=False, ignore_self=True, 
 
 			return result;
 		});
-		PyRun.simpleString('
+		this.pyCode += '
 import json
 
 def callOnHScript(func_name: str, args=None, ignore_stops=False, ignore_self=True, exclude_scripts=None, exclude_values=None):
@@ -460,7 +493,8 @@ def callOnHScript(func_name: str, args=None, ignore_stops=False, ignore_self=Tru
 		
 		
 	return result
-');
+call_on_hscript = callOnHScript
+';
         addLocalCallback("finalCallOnPythons", function(funcName:String, ?argsJson:String = null, ?ignoreStops:Bool = false, ?ignoreSelf:Bool = true, ?excludeScriptsJson:String = null, ?excludeValuesJson:String = null):Dynamic {
 			
 			var excludeScripts:Array<String> = [];
@@ -487,7 +521,7 @@ def callOnHScript(func_name: str, args=None, ignore_stops=False, ignore_self=Tru
 
 			return result;
 		});
-		PyRun.simpleString('
+		this.pyCode += '
 import json
 
 def callOnPythons(func_name: str, args=None, ignore_stops=False, ignore_self=True, exclude_scripts=None, exclude_values=None):
@@ -503,7 +537,8 @@ def callOnPythons(func_name: str, args=None, ignore_stops=False, ignore_self=Tru
 		
 		
 	return result
-');
+call_on_pythons = callOnPythons
+';
 		set("finalCallPyScript", function(pyFile:String, funcName:String, ?argsJson:String = null){
 			var args:Array<Dynamic> = [];
 			if(argsJson != null) {
@@ -516,12 +551,13 @@ def callOnPythons(func_name: str, args=None, ignore_stops=False, ignore_self=Tru
 						return pyInstance.call(funcName, args);
 			return null;
 		});
-		PyRun.simpleString("
+		this.pyCode += "
 import json
 def callPyScript(py_file, func_name, args = None):
 	if args is None: args = []
 	return finalCallPyScript(py_file, func_name, json.dumps(args))
-		");
+call_py_script = callPyScript
+";
 		set("isRunning", function(pyFile:String){
 			var pyPath:String = findScript(scriptFile);
 			if(pyPath != null)
@@ -542,12 +578,14 @@ def callPyScript(py_file, func_name, args = None):
 			#end
 			return false;
 		});
-		set("setVar", function(varName:String, value:Dynamic) {
+		set("finalSetVar", function(varName:String, valueJson:String) {
+			var value:Dynamic = null;
+			try { value = haxe.Json.parse(valueJson); } catch(e:Dynamic) {}
 			MusicBeatState.getVariables().set(varName, ReflectionFunctions.parseSingleInstance(value));
 			return value;
 		});
-		set("getVar", function(varName:String) {
-			return MusicBeatState.getVariables().get(varName);
+		set("finalGetVar", function(varName:String) {
+			return haxe.Json.stringify(MusicBeatState.getVariables().get(varName));
 		});
 		set("addPyScript", function(pyFile:String, ?ignoreAlreadyRunning:Bool = false){
 			var pyPath:String = findScript(pyFile);
@@ -670,6 +708,7 @@ def callPyScript(py_file, func_name, args = None):
 			psychlua.FunkinLua.luaTrace("removeHScript: HScript is not supported on this platform!", false, false, FlxColor.RED);
 			#end
 		});
+		
 		set("loadSong", function(?name:String = null, ?difficultyNum:Int = -1) {
 			if (name == null || name.length < 1)
 				name = Song.loadedSongName;
@@ -717,6 +756,31 @@ def callPyScript(py_file, func_name, args = None):
 				PyUtils.loadFrames(spr, image, spriteType);
 			}
 		});
+		this.pyCode += "
+import json
+global_variables_store = {}
+
+def setVar(variable, value):
+	global global_variables_store
+	global_variables_store[variable] = value
+	finalSetVar(variable, json.dumps(value, ensure_ascii=False))
+	return value
+set_var = setVar
+
+def getVar(variable):
+	global global_variables_store
+
+	if variable in global_variables_store:
+		return global_variables_store[variable]
+	raw_data = finalGetVar(variable)
+	if not raw_data: return None
+	try:
+		return json.loads(raw_data, strict=False)
+	except: return raw_data
+get_var = getVar
+
+
+";
 		set("finalLoadMultipleFrames", function(variable:String, imagesJson:String) {
 			var images:Array<String> = [];
 			try { images = haxe.Json.parse(imagesJson); } catch(e:Dynamic){}
@@ -731,11 +795,12 @@ def callPyScript(py_file, func_name, args = None):
 				spr.frames = Paths.getMultiAtlas(images);
 			}
 		});
-		PyRun.simpleString("
+		this.pyCode += "
 import json
-def loadMultipleFrames(variable. images: list):
+def loadMultipleFrames(variable, images: list):
 	finalLoadMultipleFrames(variable, json.dumps(images))
-		");
+load_multiple_frames = loadMultipleFrames
+";
 		set("getObjectOrder", function(obj:String, ?group:String = null) {
 			var leObj:FlxBasic = PyUtils.getObjectDirectly(obj);
 			if(leObj != null)
@@ -796,6 +861,7 @@ def loadMultipleFrames(variable. images: list):
 			}
 			pythonTrace('setObjectOrder: Object $obj doesn\'t exist!', false, false, FlxColor.RED);
 		});
+		
 		set("startTween", function(tag:String, vars:String, values:Any = null, duration:Float, ?options:Any = null) {
 			var penisExam:Dynamic = PyUtils.tweenPrepare(tag, vars);
 			if(penisExam != null)
@@ -848,12 +914,14 @@ def loadMultipleFrames(variable. images: list):
 			else pythonTrace('startTween: Couldnt find object: ' + vars, false, false, FlxColor.RED);
 			return null;
 		});
+		
 		set("doTweenX", function(tag:String, vars:String, value:Dynamic, duration:Float, ?ease:String = 'linear') {
 			return oldTweenFunction(tag, vars, {x: value}, duration, ease, 'doTweenX');
 		});
 		set("doTweenY", function(tag:String, vars:String, value:Dynamic, duration:Float, ?ease:String = 'linear') {
 			return oldTweenFunction(tag, vars, {y: value}, duration, ease, 'doTweenY');
 		});
+		
 		set("doTweenAngle", function(tag:String, vars:String, value:Dynamic, duration:Float, ?ease:String = 'linear') {
 			return oldTweenFunction(tag, vars, {angle: value}, duration, ease, 'doTweenAngle');
 		});
@@ -902,6 +970,7 @@ def loadMultipleFrames(variable. images: list):
 		set("noteTweenY", function(tag:String, note:Int, value:Dynamic, duration:Float, ?ease:String = 'linear') {
 			return noteTweenFunction(tag, note, {y: value}, duration, ease);
 		});
+		
 		set("noteTweenAngle", function(tag:String, note:Int, value:Dynamic, duration:Float, ?ease:String = 'linear') {
 			return noteTweenFunction(tag, note, {angle: value}, duration, ease);
 		});
@@ -944,6 +1013,7 @@ def loadMultipleFrames(variable. images: list):
 			}
 			return released;
 		});
+		
 		set("cancelTween", function(tag:String) PyUtils.cancelTween(tag));
 		set("runTimer", function(tag:String, time:Float = 1, loops:Int = 1) {
 			PyUtils.cancelTimer(tag);
@@ -984,6 +1054,7 @@ def loadMultipleFrames(variable. images: list):
 			game.songHits = value;
 			game.RecalculateRating();
 		});
+		
 		set("setHealth", function(value:Float = 1) game.health = value);
 		set("addHealth", function(value:Float = 0) game.health += value);
 		set("getHealth", function() return game.health);
@@ -1373,7 +1444,7 @@ def loadMultipleFrames(variable. images: list):
 			}
 			pythonTrace('updateHitbox: Couldnt find object: ' + obj, false, false, FlxColor.RED);
 		});
-		set("removeLuaSprite", function(tag:String, destroy:Bool = true, ?group:String = null) {
+		set("removePySprite", function(tag:String, destroy:Bool = true, ?group:String = null) {
 			var obj:FlxSprite = PyUtils.getObjectDirectly(tag);
 			if(obj == null || obj.destroy == null)
 				return;
@@ -1814,12 +1885,14 @@ def loadMultipleFrames(variable. images: list):
 			pythonTrace("getModSetting: Mods are disabled in this build!", false, false, FlxColor.RED);
 			#end
 		});
+		
 		// Recommended to use debugPrint()
 		set("finalDebug", function(text:Dynamic = '', color:String = 'WHITE') PlayState.instance.addTextToDebug(text, CoolUtil.colorFromString(color)));
-		PyRun.simpleString("
+		this.pyCode += "
 def debugPrint(text = '', color:str = 'WHITE'):
 	finalDebug(str(text), color)
-		");
+debug_print = debugPrint
+";
 		addLocalCallback("close", function() {
 			closed = true;
 			trace('Closing script $scriptName');
@@ -1844,61 +1917,76 @@ def debugPrint(text = '', color:str = 'WHITE'):
 		try {
 			if (FileSystem.exists(scriptName)) 
 			{
-				var pyCode:String = sys.io.File.getContent(scriptName);
-				
-				
-				pyCode = StringTools.replace(pyCode, "\t", "    ");
-				pyCode = StringTools.replace(pyCode, "\r\n", "\n");
-				
-				// Generating a unique and safe name for this script's dictionary
+				// 1. Забираем ЧИСТЫЙ код пользователя в отдельную переменную
+				var pythonScriptCode:String = sys.io.File.getContent(scriptName);
+				pythonScriptCode = StringTools.replace(pythonScriptCode, "\t", "    ");
+				pythonScriptCode = StringTools.replace(pythonScriptCode, "\r\n", "\n");
+
+				// 2. Кодируем пользовательский код отдельно
+				var base64UserCode:String = haxe.crypto.Base64.encode(haxe.io.Bytes.ofString(pythonScriptCode));
+
+				// 3. Дописываем системную onPythonError в pyCode (где уже лежат остальные алиасы)
+				this.pyCode += "
+def onPythonError():
+	error_mes = f'[PYTHON FUNCTION ERROR] In function {function_name}: {type(e).__name__}: {e} (File: " + this.scriptFile + ")'
+	debugPrint(error_mes, 'RED')
+	del error_mes
+";
+				this.pyCode = StringTools.replace(this.pyCode, "\t", "    ");
+				this.pyCode = StringTools.replace(this.pyCode, "\r\n", "\n");
+
+				// 4. Кодируем системный код отдельно
+				var base64SystemCode:String = haxe.crypto.Base64.encode(haxe.io.Bytes.ofString(this.pyCode));
+
+				// Генерируем уникальное safeName
 				var safeName:String = scriptFile.split("/").pop().split("\\").pop().split(".")[0];
 				safeName = ~/[^a-zA-Z0-9_]/g.replace(safeName, ""); 
 
-				// Creating a Python wrapper that will execute the file's code in an isolated context
-				var base64Code:String = haxe.crypto.Base64.encode(haxe.io.Bytes.ofString(pyCode));
-
+				// 5. НАША БРОНИРОВАННАЯ ПЕСОЧНИЦА С ДВУМЯ EXEC
 				var isolatedWrapper:String = "
 import sys
 import gc
 import base64
 gc.disable()
+
+if 'python_mods' not in globals():
+	global python_mods
+	python_mods = {}
+
+if '" + safeName + "' not in python_mods:
+	python_mods['" + safeName + "'] = dict(globals())
+	if 'python_mods' in python_mods['" + safeName + "']:
+		del python_mods['" + safeName + "']['python_mods']
+
 try:
-	# NO CHEATERS!!!
+	system_code = base64.b64decode('" + base64SystemCode + "').decode('utf-8')
+	exec(system_code, python_mods['" + safeName + "'])
+except Exception as sys_err:
+	finalDebug(f'[SYSTEM INITIALIZATION ERROR]: {sys_err}', 'RED')
+
+try:
 	dangerous_modules = ['os', 'subprocess', 'shutil', 'ctypes', 'importlib', 'nt', 'posix', 'pathlib', 'io']
 	for mod in dangerous_modules:
 		if mod in sys.modules: del sys.modules[mod]
 		sys.modules[mod] = None
 
-	if 'python_mods' not in globals():
-		global python_mods
-		python_mods = {}
-
-
-	if '" + safeName + "' not in python_mods:
-		python_mods['" + safeName + "'] = dict(globals())
-		if 'python_mods' in python_mods['" + safeName + "']:
-			del python_mods['" + safeName + "']['python_mods']
-
-	raw_user_code = base64.b64decode('" + base64Code + "').decode('utf-8')
-	exec(raw_user_code, python_mods['" + safeName + "'])
+	raw_user_code = base64.b64decode('" + base64UserCode + "').decode('utf-8')
+					
+					
+	compiled_user_code = compile(raw_user_code, '" + this.scriptName + "', 'exec')
+	exec(compiled_user_code, python_mods['" + safeName + "'])
 except Exception as e:
-	# Получаем информацию об исключении и трейсбеке
 	exc_type, exc_value, exc_tb = sys.exc_info()
 	line_num = 0
-	
-	# Проходим до самого глубокого уровня ошибки в коде пользователя
+					
 	if exc_tb is not None:
 		tb = exc_tb
 		while tb.tb_next:
 			tb = tb.tb_next
 		line_num = tb.tb_lineno
 
-	# Выводим ошибку с точным номером строки
-	debugPrint(f'[PYTHON ERROR (Line {line_num})]: {e} (File: " + this.scriptName + ")', 'RED')
+	finalDebug(f'[PYTHON ERROR (Line {line_num})]: {type(e).__name__}: {e} (File: " + this.scriptName + ")', 'RED')
 ";
-
-
-
 				
 				this.result = hxpy.PyRun.simpleString((cast isolatedWrapper:cpp.ConstCharStar));
 				trace(this.result);
@@ -1913,6 +2001,30 @@ except Exception as e:
 					var filename:String = scriptFile.split("/").pop().split("\\").pop();
 					states.PlayState.instance.addTextToDebug(filename + ": [Python Syntax Error]", FlxColor.RED);
 					trace("[HXPY ERROR] Syntax or Initialization error in: " + scriptName);
+
+					// --- ТОТАЛЬНЫЙ ПЕРЕХВАТ ОШИБОК ИНИЦИАЛИЗАЦИИ ИЗ C-API ---
+					// 1. Создаем указатели для типа, значения и трейсбека ошибки
+					var pType:cpp.RawPointer<hxpy.PyObject> = null;
+					var pValue:cpp.RawPointer<hxpy.PyObject> = null;
+					var pTraceback:cpp.RawPointer<hxpy.PyObject> = null;
+					
+					// 2. Вытаскиваем синтаксическую ошибку из потока Python (очищаем флаг ошибки)
+					untyped __cpp__("PyErr_Fetch(&{0}, &{1}, &{2})", pType, pValue, pTraceback);
+					untyped __cpp__("PyErr_NormalizeException(&{0}, &{1}, &{2})", pType, pValue, pTraceback);
+					trace(pValue);
+					if (pValue != null) {
+						// Переводим Си-объект ошибки в Haxe-строку
+						var errStr:String = convertPyToHaxe(pValue);
+						// Выводим ТОЧНОЕ описание синтаксического бага прямо на экран игры!
+						states.PlayState.instance.addTextToDebug(filename + ": " + errStr, FlxColor.RED);
+						trace("Python PyRun Exception: " + errStr);
+					}
+						
+					// 3. Очищаем ссылки в памяти C++, чтобы избежать утечки памяти
+					if (pType != null) untyped __cpp__("Py_DECREF({0})", pType);
+					if (pValue != null) untyped __cpp__("Py_DECREF({0})", pValue);
+					if (pTraceback != null) untyped __cpp__("Py_DECREF({0})", pTraceback);
+					// -------------------------------------------------------
 				}
 			} 
 			else 
@@ -1922,8 +2034,8 @@ except Exception as e:
 		} 
 		catch (e:haxe.Exception) 
 		{
-			var filename:String = scriptFile.split("/").pop().split("\\").pop();
-			states.PlayState.instance.addTextToDebug(filename + ": [Critical Haxe Exception]: " + e.message, FlxColor.RED);
+			// var filename:String = scriptFile.split("/").pop().split("\\").pop();
+			states.PlayState.instance.addTextToDebug(this.scriptFile + ": [Critical Haxe Exception]: " + e.message, FlxColor.RED);
 			trace("[HXPY CRITICAL EXCEPTION] " + e.message);
 		}
 
@@ -2082,9 +2194,10 @@ gc.collect()
 				var scriptCtxLocal:cpp.RawPointer<hxpy.PyObject> = untyped __cpp__("PyDict_GetItemString({0}, {1}.__s)", pyMods, this.rawSafeName);
 				if (scriptCtxLocal != null) {
 					untyped __cpp__("PyDict_SetItemString({0}, {1}, {2})", scriptCtxLocal, cVar, pyObject);
+					
 				}
 			}
-
+			PyRun.simpleString(this.toSnakeCase(variable) + " = " + variable);
 			untyped __cpp__("Py_DECREF({0})", pyObject);
 		}
 	}
@@ -2120,11 +2233,42 @@ gc.collect()
 
 		return null;
 	}
+	public function functionExists(funcName:String) {
+		var mainModule:cpp.RawPointer<hxpy.PyObject> = untyped __cpp__("PyImport_AddModule(\"__main__\")");
+		var mainDict:cpp.RawPointer<hxpy.PyObject> = PyModule.getDict(mainModule);
+			
+		var pyMods:cpp.RawPointer<hxpy.PyObject> = untyped __cpp__("PyDict_GetItemString({0}, \"python_mods\")", mainDict);
+		if (pyMods == null) return false;
+
+		var scriptCtxLocal:cpp.RawPointer<hxpy.PyObject> = untyped __cpp__("PyDict_GetItemString({0}, {1}.__s)", pyMods, this.rawSafeName);
+		if (scriptCtxLocal == null) return false;
+
+		var pyFunc:cpp.RawPointer<hxpy.PyObject> = untyped __cpp__("PyDict_GetItemString({0}, {1}.__s)", scriptCtxLocal, funcName);
+			
+		if (pyFunc != null && untyped __cpp__("PyCallable_Check({0})", pyFunc) == 1) return true;
+		return false;
+	}
+	public function toSnakeCase(str:String):String {
+		if (snakeCaseCache.exists(str)) return snakeCaseCache.get(str);
+
+		// Если вызывается впервые — переводим через EReg
+		var ereg1:EReg = ~/([A-Z]+)([A-Z][a-z])/g;
+		var res = ereg1.replace(str, "$1_$2");
+		
+		var ereg2:EReg = ~/([a-z\d])([A-Z])/g;
+		res = ereg2.replace(res, "$1_$2");
+		
+		var finalResult = res.toLowerCase();
+		
+		// Запоминаем в кэш перед возвратом
+		snakeCaseCache.set(str, finalResult);
+		return finalResult;
+	}
 
 	public function call(funcName:String, args:Array<Dynamic>):Dynamic {
 		if (closed) return PyUtils.Function_Continue;
 		lastCalledScript = this;
-
+		set("function_name", funcName);
 		try {
 			
 			
@@ -2140,7 +2284,7 @@ gc.collect()
 			var pyFunc:cpp.RawPointer<hxpy.PyObject> = untyped __cpp__("PyDict_GetItemString({0}, {1}.__s)", scriptCtxLocal, funcName);
 			
 			if (pyFunc != null && untyped __cpp__("PyCallable_Check({0})", pyFunc) == 1) {
-				
+				this.isFunction = true;
 				var len:Int = (args != null) ? args.length : 0;
 
 				var pyArgs:cpp.RawPointer<hxpy.PyObject> = null; 
@@ -2152,9 +2296,9 @@ gc.collect()
 					for (i in 0...len) {
 						var pyArg:cpp.RawPointer<hxpy.PyObject> = convertHaxeToPy(localArgs[i]);
 						
-						if (pyArg == Py.NONE || pyArg == Py.TRUE || pyArg == Py.FALSE) {
-							untyped __cpp__("Py_INCREF({0})", pyArg);
-						}
+						 
+						untyped __cpp__("Py_INCREF({0})", pyArg);
+						
 						
 						untyped __cpp__("PyTuple_SetItem({0}, {1}, {2})", pyArgs, i, pyArg);
 					}
@@ -2176,9 +2320,37 @@ gc.collect()
 					
 					return haxeResult;
 				} else {
-					untyped __cpp__("PyErr_Print()"); 
+
+					
+						// 1. Создаем указатели для типа, значения и трейсбека ошибки
+					var pType:cpp.RawPointer<hxpy.PyObject> = null;
+					var pValue:cpp.RawPointer<hxpy.PyObject> = null;
+					var pTraceback:cpp.RawPointer<hxpy.PyObject> = null;
+					
+						// 2. Забираем ошибку из потока Python (это очистит флаг ошибки, игра не вылетит)
+					untyped __cpp__("PyErr_Fetch(&{0}, &{1}, &{2})", pType, pValue, pTraceback);
+					untyped __cpp__("PyErr_NormalizeException(&{0}, &{1}, &{2})", pType, pValue, pTraceback);
+					trace(pValue);
+					if (pValue != null) {
+						// pValue — это и есть тот самый объект "e" (BaseException)
+						// 3. Записываем этот объект напрямую в словарь вашего Python-мода как переменную "e"
+						untyped __cpp__("PyDict_SetItemString({0}, \"e\", {1})", scriptCtxLocal, pValue);
+							
+							// 4. Теперь мы можем безопасно вызвать в Python функцию обработки ошибок, если она есть
+						var pyErrorHandler:cpp.RawPointer<hxpy.PyObject> = untyped __cpp__("PyDict_GetItemString({0}, \"onPythonError\")", scriptCtxLocal);
+						if (pyErrorHandler != null && untyped __cpp__("PyCallable_Check({0})", pyErrorHandler) == 1) {
+							untyped __cpp__("PyObject_CallObject({0}, NULL)", pyErrorHandler);
+						}
+					}
+						
+					// Обязательно очищаем ссылки в C-API, чтобы избежать утечки памяти
+					if (pType != null) untyped __cpp__("Py_DECREF({0})", pType);
+					if (pValue != null) untyped __cpp__("Py_DECREF({0})", pValue);
+					if (pTraceback != null) untyped __cpp__("Py_DECREF({0})", pTraceback);
 				}
-			}
+
+			} else this.isFunction = false;
+			
 			
 			return PyUtils.Function_Continue;
 		} 
@@ -2329,6 +2501,10 @@ gc.collect()
 		}
 		else pythonTrace('$funcName: Couldnt find object: $vars', false, false, FlxColor.RED);
 		return null;
+	}
+	public static function addPyCode(funk:FunkinPython, code:String)
+	{
+		funk.pyCode += code + '\n';
 	}
 	function noteTweenFunction(tag:String, note:Int, data:Dynamic, duration:Float, ease:String)
 	{
